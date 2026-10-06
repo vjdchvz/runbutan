@@ -64,3 +64,4 @@ keystore needs its own Android OAuth client, step 2, registered against its own 
 - `src/firebase.ts`, `src/auth.ts`, `src/sync.ts` Google sign-in and Firestore backup
 - `src/settings.ts`, `src/units.ts` user settings and km/mi formatting
 - `src/*Screen.tsx` screens
+- `promo/` a separate Remotion project (own `package.json`) rendering a feature-tour demo video — see `promo/README.md`
