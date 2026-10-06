@@ -4,7 +4,7 @@ import type { TrackPt } from './session';
 // the distance too long (and the pace look too fast). The export therefore uses a smoothed copy of the route:
 // heavy smoothing when moving slowly (jitter is large compared with the step), light when running fast
 // (so corners are not cut). The app's own saved run is left untouched.
-const hav = (a: TrackPt, b: TrackPt) => {
+export const haversine = (a: TrackPt, b: TrackPt) => {
   const R = 6371000, rad = Math.PI / 180;
   const dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
@@ -17,7 +17,7 @@ export const cleanTrack = (track: TrackPt[]): TrackPt[] => {
   const win = (i: number) => {
     const a = Math.max(0, i - 2), b = Math.min(n - 1, i + 2);
     const dt = (track[b].t - track[a].t) / 1000;
-    const v = dt > 0 ? hav(track[a], track[b]) / dt : 0; // local speed, m/s
+    const v = dt > 0 ? haversine(track[a], track[b]) / dt : 0; // local speed, m/s
     return v >= 2.5 ? 1 : v >= 1.2 ? 2 : 3;
   };
   return track.map((p, i) => {
