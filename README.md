@@ -39,7 +39,9 @@ On first start choose location **Allow all the time** and **Precise**.
 
 ## Cloud sync setup
 Google sign-in + Firestore backup (Settings → Account) needs two things set up once, outside the
-repo, in the Firebase project behind the config in `.env`:
+repo, in the Firebase project behind the config in `.env`. Both are done for the current
+`keystores/debug.keystore` — this section is reference for if that keystore ever changes (a new
+keystore needs its own Android OAuth client, step 2, registered against its own SHA-1):
 
 1. **Firestore Security Rules** — paste `firestore.rules` into Firebase Console → Firestore
    Database → Rules → Publish. Without this, Firestore's default rules either deny everything
