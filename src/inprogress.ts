@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { badgesFor, bestEfforts } from './efforts';
 import { loadRuns, saveRun, Run } from './history';
 import { computeMovingStats } from './movingStats';
+import { syncNow } from './sync';
 import type { TrackPt } from './session';
 
 // A copy of the run being recorded, written every few seconds and again right before saving.
@@ -34,5 +35,8 @@ export const persistRun = async (base: Run, route: TrackPt[], force = false) => 
   const moving = route.length > 1 ? computeMovingStats(route, base.distanceM, splitM) : null;
   const run: Run = { ...base, ...moving, efforts, badges };
   await saveRun(run, route, force);
+  // Best-effort, offline-safe: syncNow() itself no-ops when signed out, and a failed upload here
+  // just leaves that run for the next sync to pick up (the save above already succeeded locally).
+  syncNow().catch(() => {});
   return run;
 };

@@ -1,0 +1,15 @@
+rules_version = '2';
+
+// Apply this in the Firebase Console: Firestore Database → Rules → paste → Publish.
+// (Or, with the Firebase CLI: `firebase deploy --only firestore:rules`.)
+//
+// Each user's run history lives at users/{uid}/runs/{runId} (see src/sync.ts). Without this —
+// e.g. still on Firestore's default "test mode" rules — anyone holding the app's (non-secret,
+// publicly embedded) Firebase config could read or overwrite any other user's runs.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/runs/{runId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

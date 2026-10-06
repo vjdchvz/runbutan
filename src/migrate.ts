@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { badgesFor, bestEfforts } from './efforts';
 import { loadRuns, loadTrack, Run, updateRun } from './history';
 import { computeMovingStats } from './movingStats';
+import { resetSyncCache, syncNow } from './sync';
 
 // One-time: recompute every saved run's best efforts with the current distance list (km-based),
 // oldest first so record badges come out right. Runs go one at a time with a pause, so the UI never stalls.
@@ -45,4 +46,9 @@ export const migrateMovingTime = async () => {
     await new Promise<void>((res) => setTimeout(res, 120));
   }
   await AsyncStorage.setItem(MOVING_FLAG, '1');
+  // The runs above were already pushed to Firestore with their old (pre-fix) numbers, possibly in
+  // an earlier app session — force the next sync to re-check all of them rather than skip them as
+  // already synced.
+  resetSyncCache();
+  syncNow().catch(() => {});
 };

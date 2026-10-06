@@ -49,6 +49,7 @@ import type { ZonePaces } from './src/coach/vdot';
 import HistoryScreen from './src/HistoryScreen';
 import { useDialog } from './src/Dialog';
 import RouteMap from './src/RouteMap';
+import { useAuthState } from './src/auth';
 
 type Tab = 'run' | 'history' | 'coach' | 'you' | 'settings';
 type Armed = { w: Workout; ctx: PlanCtx | null; paces: ZonePaces | null };
@@ -83,6 +84,7 @@ export default function App() {
     loadSettings();
   }, []);
   const [s, setS] = useState<Stats>(getStats());
+  const { user } = useAuthState();
   const [tab, setTab] = useState<Tab>('run');
   const { dialog, showDialog } = useDialog();
   const [ready, setReady] = useState(!SEED_DEMO); // demo seeding (test builds only) must finish before screens load
@@ -392,8 +394,15 @@ export default function App() {
           <Text style={styles.brandButan}>butan</Text>
         </Text>
         <GpsChip />
-        <Pressable onPress={() => setTab('settings')} hitSlop={10} style={styles.gear}><Text style={styles.gearText}>⚙</Text></Pressable>
+        <Pressable onPress={() => setTab('settings')} hitSlop={10}>
+          {user?.photoURL ? (
+            <Image source={{ uri: user.photoURL }} style={styles.headerAvatar} />
+          ) : (
+            <View style={styles.gear}><Text style={styles.gearText}>⚙</Text></View>
+          )}
+        </Pressable>
       </View>
+      {user && <Text style={styles.greeting}>Hi, {(user.displayName ?? '').split(' ')[0] || 'there'}</Text>}
 
       <View style={styles.tabs}>
         <TabButton label="RUN" active={tab === 'run'} onPress={() => setTab('run')} />
@@ -585,6 +594,8 @@ const styles = StyleSheet.create({
   coachDone: { color: '#7FD67F', fontSize: 14, fontWeight: '900' },
   gear: { marginLeft: 10, width: 38, height: 38, borderRadius: 12, backgroundColor: '#17171F', alignItems: 'center', justifyContent: 'center' },
   gearText: { color: '#C8C8D0', fontSize: 20 },
+  headerAvatar: { marginLeft: 10, width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: '#17171F' },
+  greeting: { color: '#8A8A96', fontSize: 13, fontWeight: '700', marginTop: 6 },
   tabs: { flexDirection: 'row', gap: 8, marginTop: 16 },
   tab: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: '#17171F' },
   tabActive: { backgroundColor: '#FF4D2E' },
