@@ -39,13 +39,27 @@ jobs:
         working-directory: android
         run: ./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a
 
-      - name: Rename APK with version + commit
+      # A fixed filename (no commit sha) on purpose: softprops/action-gh-release replaces an
+      # existing same-named asset on the release rather than adding a new one. A sha-suffixed
+      # name let 7 differently-named APKs pile up under the one "latest" release before this was
+      # noticed — anyone who'd clicked an old link, or an old cached listing, could silently get
+      # a build from days earlier. The commit it was built from is still in the release body below.
+      - name: Rename APK
         id: apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk runbutan-latest.apk
+
+      # Unconditional, every run: belt-and-suspenders against the exact bug this fixes. With a
+      # fixed filename this is normally a same-name replace and there's nothing to delete, but if
+      # the filename or release tooling ever changes again, this stops old assets from silently
+      # accumulating a second time.
+      - name: Delete any stale assets already on the "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          version=$(node -p "require('./package.json').version")
-          name="runbutan-${version}-${GITHUB_SHA::7}.apk"
-          cp android/app/build/outputs/apk/release/app-release.apk "$name"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
+          gh release view latest --repo "${{ github.repository }}" --json assets \
+            --jq '.assets[].name' 2>/dev/null | while read -r f; do
+            gh release delete-asset latest "$f" --repo "${{ github.repository }}" --yes
+          done || true
 
       - name: Publish/update the "latest" GitHub Release
         uses: softprops/action-gh-release@v2
@@ -56,4 +70,4 @@ jobs:
             Automatic build from `${{ github.sha }}` on `main`.
             Install: download the APK below, allow "install unknown apps" for your browser/file manager, then open it.
           make_latest: true
-          files: ${{ steps.apk.outputs.name }}
+          files: runbutan-latest.apk
