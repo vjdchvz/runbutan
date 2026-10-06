@@ -44,6 +44,7 @@ import CoachScreen, { PlanCtx } from './src/CoachScreen';
 import SettingsScreen from './src/SettingsScreen';
 import { cancelRunNotification, onRunAction, showRunNotification } from './modules/runkit';
 import { markSessionDone } from './src/coach/store';
+import { recordOutcome } from './src/coach/adapt';
 import { paceFmt, planById, planSessions, stepAmount, stepName, Workout } from './src/coach/workouts';
 import type { ZonePaces } from './src/coach/vdot';
 import HistoryScreen from './src/HistoryScreen';
@@ -326,6 +327,20 @@ export default function App() {
       const lines = [...badges].sort((a, b) => a.rank - b.rank || b.d - a.d).map(badgeText);
       const result = getCoachResult();
       const ctx = armedRef.current?.ctx ?? null;
+      if (ctx && armedRef.current) {
+        // Adaptive coaching's input (coach/adapt.ts): how this attempt compared to its own target —
+        // armedRef.current.w is whatever was actually started, already adapted if it was. Skipped
+        // for the short-run/discarded path above: a near-zero-distance attempt there is a GPS
+        // failure, not real training signal, and would only pollute the next adaptation.
+        recordOutcome(
+          ctx.planId,
+          ctx.sessionId,
+          armedRef.current.w,
+          { movingSec: saved.movingSec, distanceM: saved.distanceM, avgPaceSec: saved.avgPaceSec },
+          result.finished,
+          armedRef.current.paces?.easy ?? null,
+        ).catch(() => {});
+      }
       if (result.finished && ctx) {
         const prog = await markSessionDone(ctx.planId, ctx.sessionId);
         const plan = planById(ctx.planId);

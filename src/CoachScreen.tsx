@@ -10,6 +10,7 @@ import {
 } from './coach/workouts';
 import { ROUTINES, routineSeconds, Routine } from './coach/routines';
 import { getNum, KEYS, loadPlan, PlanProgress, savePlan, setNum } from './coach/store';
+import { applyAdaptation, computeAdaptation, loadOutcomes, type SessionOutcome } from './coach/adapt';
 import RoutineRunner from './RoutineRunner';
 import { useDialog } from './Dialog';
 import { useSettings } from './settings';
@@ -52,11 +53,12 @@ const compress = (steps: Step[]): string[] => {
 };
 
 export default function CoachScreen({ running, onStartWorkout }: Props) {
-  useSettings(); // redraw when the unit changes
+  const st = useSettings(); // redraw when the unit changes
   const { dialog, showDialog } = useDialog();
   const [view, setView] = useState<ViewState>({ t: 'home' });
   const [runs, setRuns] = useState<Run[]>([]);
   const [progress, setProgress] = useState<PlanProgress | null>(null);
+  const [outcomes, setOutcomes] = useState<SessionOutcome[]>([]);
   const [manual5k, setManual5k] = useState<number | null>(null);
   const [age, setAge] = useState(30);
   const [bpm, setBpm] = useState(170);
@@ -72,6 +74,14 @@ export default function CoachScreen({ running, onStartWorkout }: Props) {
     getNum(KEYS.age).then((v) => v && setAge(v));
     getNum(KEYS.cadence).then((v) => v && setBpm(v));
   }, [reload]);
+  // Adaptive coaching's input: how the last few sessions of the active plan actually went.
+  useEffect(() => {
+    if (!progress?.planId) {
+      setOutcomes([]);
+      return;
+    }
+    loadOutcomes(progress.planId).then(setOutcomes);
+  }, [progress?.planId, progress?.done.length]);
 
   useEffect(() => {
     if (view.t === 'home') return;
@@ -129,6 +139,11 @@ export default function CoachScreen({ running, onStartWorkout }: Props) {
   // ---- today's session + weekly advice ----
   const plan = progress ? planById(progress.planId) : undefined;
   const nextSession = plan ? planSessions(plan).find((s) => !progress!.done.includes(s.id)) : undefined;
+  // Adaptive coaching (coach/adapt.ts): eases or pushes only the very next undone session, from
+  // how the last few sessions of *this* plan actually went. Every other week stays exactly as
+  // authored — it gets its own fresh adaptation once it's actually next, not a guess made now.
+  const adaptation = st.adaptiveCoaching ? computeAdaptation(outcomes) : { factor: 1, reason: null };
+  const nextWorkout = nextSession ? applyAdaptation(nextSession.workout, adaptation.factor) : null;
   const startPlan = (p: Plan) => {
     const begin = () => {
       const np = { planId: p.id, startedAt: Date.now(), done: [] };
@@ -207,16 +222,23 @@ export default function CoachScreen({ running, onStartWorkout }: Props) {
         {p.weeks.map((wk, wi) => (
           <View key={wi} style={styles.card}>
             <Text style={styles.label}>WEEK {wi + 1}</Text>
-            {wk.map((s) => (
-              <Pressable key={s.id} style={styles.sessionRow} onPress={() => setView({ t: 'workout', w: s.workout, ctx: { planId: p.id, sessionId: s.id } })}>
+            {wk.map((s) => {
+              // Only the one session that's actually next gets today's adaptation; every other
+              // row shows the plan exactly as authored, since its own adaptation only happens
+              // once it's actually reached.
+              const isNext = p.id === plan?.id && s.id === nextSession?.id;
+              const displayWorkout = isNext && nextWorkout ? nextWorkout : s.workout;
+              return (
+              <Pressable key={s.id} style={styles.sessionRow} onPress={() => setView({ t: 'workout', w: displayWorkout, ctx: { planId: p.id, sessionId: s.id } })}>
                 <Text style={[styles.check, done.includes(s.id) && styles.checkOn]}>{done.includes(s.id) ? '✓' : '○'}</Text>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.line}>{s.workout.name.replace(/^Week \d+ · /, '')} · {s.title}</Text>
-                  <Text style={styles.hint2}>~{Math.round(workoutSeconds(s.workout) / 60)} min</Text>
+                  <Text style={styles.hint2}>~{Math.round(workoutSeconds(displayWorkout) / 60)} min{isNext && adaptation.reason ? ' · adjusted' : ''}</Text>
                 </View>
                 <Text style={styles.chev}>›</Text>
               </Pressable>
-            ))}
+              );
+            })}
           </View>
         ))}
         <Pressable
@@ -252,12 +274,13 @@ export default function CoachScreen({ running, onStartWorkout }: Props) {
         <Text style={styles.tipText}>{tip}</Text>
       </View>
 
-      {plan && nextSession ? (
+      {plan && nextSession && nextWorkout ? (
         <View style={styles.card}>
           <Text style={styles.label}>TODAY · {plan.name.toUpperCase()}</Text>
           <Text style={styles.big}>{nextSession.workout.name}</Text>
-          <Text style={styles.hint}>{nextSession.title} · ~{Math.round(workoutSeconds(nextSession.workout) / 60)} min</Text>
-          <Pressable style={styles.btn} onPress={() => setView({ t: 'workout', w: nextSession.workout, ctx: { planId: plan.id, sessionId: nextSession.id } })}>
+          <Text style={styles.hint}>{nextSession.title} · ~{Math.round(workoutSeconds(nextWorkout) / 60)} min</Text>
+          {adaptation.reason && <Text style={styles.adapted}>🤖 {adaptation.reason}</Text>}
+          <Pressable style={styles.btn} onPress={() => setView({ t: 'workout', w: nextWorkout, ctx: { planId: plan.id, sessionId: nextSession.id } })}>
             <Text style={styles.btnText}>OPEN SESSION</Text>
           </Pressable>
           <Pressable onPress={() => setView({ t: 'plan', id: plan.id })} style={{ alignItems: 'center', paddingTop: 12 }}>
@@ -399,6 +422,7 @@ const styles = StyleSheet.create({
   hint2: { color: '#6A6A76', fontSize: 12, marginTop: 2 },
   line: { color: '#fff', fontSize: 15, fontWeight: '700', marginTop: 6 },
   link: { color: '#FF4D2E', fontWeight: '800', marginTop: 10, fontSize: 13 },
+  adapted: { color: '#E0B020', fontSize: 12, fontWeight: '700', marginTop: 8 },
   back: { color: '#FF4D2E', fontWeight: '800', letterSpacing: 1.5, marginTop: 14 },
   badge: { color: '#8A8A96', fontSize: 10, fontWeight: '800', letterSpacing: 1.2, backgroundColor: '#22222C', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: 'hidden' },
   row: { flexDirection: 'row', justifyContent: 'space-between' },

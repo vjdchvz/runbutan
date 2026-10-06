@@ -175,6 +175,16 @@ export default function SettingsScreen({ onBack, muted }: { onBack: () => void; 
       </View>
 
       <View style={styles.card}>
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={styles.line}>Adaptive coaching</Text>
+            <Text style={styles.hint}>Your next plan session is eased or pushed a little based on how your last few sessions actually went. Off keeps every session exactly as written.</Text>
+          </View>
+          <Switch value={st.adaptiveCoaching} onValueChange={() => toggle('adaptiveCoaching')} trackColor={{ false: '#3A3A46', true: '#FF4D2E' }} thumbColor="#fff" />
+        </View>
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.label}>LOCK SCREEN</Text>
         <Text style={styles.hint}>While you run, the notification shows time, distance and pace with Pause and Stop buttons. Press Stop twice to finish, so a stray tap in your pocket can not end the run. If you do not see it, allow notifications for RUNbutan in your phone settings.</Text>
       </View>
