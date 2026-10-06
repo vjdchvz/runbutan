@@ -7,7 +7,7 @@ A free, offline-first Android running app with a voice coach. Built with Expo / 
 - **Voice**: call-outs every 30 s (pace, average, distance) and at every km; mute switch.
 - **Maps**: your route on a metre grid with no signal; OpenStreetMap tiles drawn underneath when online (cached).
 - **History and stats**: activity cards with route thumbnails, weekly goal, 12-week chart, streak, month calendar and recap, best efforts (400 m to marathon) with record badges, GPX share (e.g. to Strava).
-- **Coach tab**: Couch to 5K, 5K to 10K and 5K Speed plans; quick workouts (intervals, tempo, fartlek, pyramid, goal runs) led by voice; pace zones and race predictions from your best effort (VDOT); guided warm-up, stretch and strength routines; cadence beat; heart-rate zones.
+- **Coach tab**: pick a training plan for any distance from Couch to 5K up through Marathon to Ultra — Couch to 5K, 5K to 10K, 10K to Half Marathon, Half to Marathon, Marathon to Ultra, and 5K Speed; quick workouts (intervals, tempo, fartlek, pyramid, goal runs) led by voice; pace zones and race predictions (5K to 50K) from your best effort (VDOT); guided warm-up, stretch and strength routines; cadence beat; heart-rate zones.
 - **Settings**: km or miles, how often the voice speaks, which numbers it reads, voice and speed, lower-the-music while speaking.
 - **Lock-screen controls**: the run notification shows time, distance and pace with Pause and Stop (Stop needs two presses within 6 s).
 - **Pace accuracy**: current pace and distance use the phone's own GPS (Doppler) speed, falling back to jitter-filtered positions on phones that do not report it.

@@ -136,6 +136,68 @@ const speed5k: Plan = {
   }),
 };
 
-export const PLANS: Plan[] = [couch5k, tenK, speed5k];
+// 12, 13, 14 · down to 12 · 16, 17 · down to 14 · 18, 19 (the long run never jumps more than ~10% week
+// to week, with an easy "down" week every 4th to absorb the load — the same shape LONG_KM used for 10K).
+const HALF_LONG_KM = [12, 13, 14, 12, 16, 17, 14, 18, 19];
+const halfMarathon: Plan = {
+  id: 'h21k',
+  name: '10K to Half Marathon',
+  blurb: '9 weeks · 3 runs a week: an easy run, a quality session and a long run building to 19 km.',
+  level: 'Intermediate',
+  weeks: Array.from({ length: 9 }, (_, i) => {
+    const w = i + 1;
+    const quality: Step[] =
+      w % 2
+        ? [warm(10), run((15 + w) * 60, 'tempo', 'Tempo'), cool(8)]
+        : [warm(10), ...rep(3 + Math.floor(w / 3), runM(1000, 'interval', 'Hard km'), rec(150)), cool(8)];
+    return [
+      session('h21k', w, 1, 'Easy run', [warm(3), run((28 + w) * 60, 'easy'), cool(3)]),
+      session('h21k', w, 2, w % 2 ? 'Tempo run' : 'Hard km repeats', quality),
+      session('h21k', w, 3, `Long run · ${HALF_LONG_KM[i]} km`, [warm(3), runM(HALF_LONG_KM[i] * 1000, 'easy'), cool(3)]),
+    ];
+  }),
+};
+
+// Three-week build, one-week down, repeated, peaking at 32 km before a 2-week taper to race-ready.
+const MARATHON_LONG_KM = [16, 18, 15, 21, 24, 18, 27, 29, 20, 32, 24, 16];
+const marathon: Plan = {
+  id: 'm42k',
+  name: 'Half to Marathon',
+  blurb: '12 weeks · 3 runs a week: an easy run, a marathon-pace session and a long run peaking at 32 km, with a taper.',
+  level: 'Advanced',
+  weeks: Array.from({ length: 12 }, (_, i) => {
+    const w = i + 1;
+    const quality: Step[] =
+      i < 9
+        ? [warm(10), runM((6 + Math.floor(w / 2)) * 1000, 'marathon', 'Marathon pace'), cool(8)]
+        : [warm(10), run(15 * 60, 'tempo', 'Tempo'), cool(8)]; // taper: shorter and sharper, not longer
+    return [
+      session('m42k', w, 1, 'Easy run', [warm(3), run((30 + Math.min(w, 8)) * 60, 'easy'), cool(3)]),
+      session('m42k', w, 2, i < 9 ? 'Marathon-pace run' : 'Tempo run', quality),
+      session('m42k', w, 3, `Long run · ${MARATHON_LONG_KM[i]} km`, [warm(3), runM(MARATHON_LONG_KM[i] * 1000, 'easy'), cool(3)]),
+    ];
+  }),
+};
+
+// Ultra training trades pace for time on feet: the long days are timed, not distanced, and the
+// hardest session of the week is a long run the day *after* another long run (back-to-back), the
+// closest a 3-day week can get to race-week fatigue without a full ultra-style training block.
+const ULTRA_LONG_MIN = [150, 165, 120, 180, 195, 150, 210, 150];
+const ultra: Plan = {
+  id: 'u50k',
+  name: 'Marathon to Ultra',
+  blurb: '8 weeks · 3 runs a week: an easy run, a hilly/technical effort and a long run building past 3 hours on feet, back-to-back with the easy run.',
+  level: 'Advanced',
+  weeks: Array.from({ length: 8 }, (_, i) => {
+    const w = i + 1;
+    return [
+      session('u50k', w, 1, 'Long run · time on feet', [warm(5), run(ULTRA_LONG_MIN[i] * 60, 'easy'), cool(5)]),
+      session('u50k', w, 2, 'Back-to-back easy run', [warm(3), run(Math.min(60, 30 + w * 3) * 60, 'easy'), cool(3)]),
+      session('u50k', w, 3, 'Hill/tempo effort', [warm(10), ...rep(4 + Math.floor(w / 2), run(180, 'tempo', 'Hard effort'), rec(120)), cool(8)]),
+    ];
+  }),
+};
+
+export const PLANS: Plan[] = [couch5k, tenK, halfMarathon, marathon, ultra, speed5k];
 export const planById = (id: string) => PLANS.find((p) => p.id === id);
 export const planSessions = (p: Plan) => p.weeks.flat();
