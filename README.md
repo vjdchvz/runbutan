@@ -11,6 +11,8 @@ A free, offline-first Android running app with a voice coach. Built with Expo / 
 - **Settings**: km or miles, how often the voice speaks, which numbers it reads, voice and speed, lower-the-music while speaking.
 - **Lock-screen controls**: the run notification shows time, distance and pace with Pause and Stop (Stop needs two presses within 6 s).
 - **Pace accuracy**: current pace and distance use the phone's own GPS (Doppler) speed, falling back to jitter-filtered positions on phones that do not report it.
+- **Strava upload**: "Upload to Strava" saves a smoothed GPX to Downloads and opens strava.com/upload/select (a website cannot be handed a file, so you pick it with Choose Files). Smoothing removes GPS jitter so Strava's distance matches the app's.
+- **Moving time** follows Strava's rule: faster than about 0.89 m/s counts as moving, and slower stretches only count as rest after 15 s.
 - **Safety**: run history stored one key per run, unfinished-run recovery, explains runs that could not be saved.
 
 ## Run it

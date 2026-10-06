@@ -6,6 +6,7 @@ type Native = {
   abandonDuck(): void;
   showRunNotification(title: string, text: string, paused: boolean, stopArmed: boolean): void;
   cancelRunNotification(): void;
+  saveToDownloads(name: string, content: string, mime: string): Promise<string>;
   addListener(event: 'onAction', cb: (e: { action: RunAction }) => void): { remove(): void };
 };
 
@@ -44,6 +45,11 @@ export const cancelRunNotification = () => {
   } catch {
     // ignore
   }
+};
+// Saves a text file to the public Downloads folder; resolves with the final file name. Rejects if unsupported.
+export const saveToDownloads = (name: string, content: string, mime: string): Promise<string> => {
+  if (!native) return Promise.reject(new Error('Saving files is not available in this build'));
+  return native.saveToDownloads(name, content, mime);
 };
 export const onRunAction = (cb: (a: RunAction) => void) => {
   try {

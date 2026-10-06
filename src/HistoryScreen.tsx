@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { BackHandler, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { deleteRun, loadRuns, loadTrack, Run, summarize, thumbToTrack, updateRun } from './history';
 import { badgeText, effortLabel, isEffortDistance } from './efforts';
-import { shareGpx } from './gpx';
+import { saveGpxToDownloads, shareGpx, STRAVA_UPLOAD_URL } from './gpx';
 import RouteMap from './RouteMap';
-import { useDialog } from './Dialog';
+import { DialogOptions, useDialog } from './Dialog';
 import { fmtPace, fmtTime, TrackPt } from './session';
 import { runTitle } from './stats';
 import { useSettings } from './settings';
@@ -78,6 +78,7 @@ export default function HistoryScreen() {
             refresh();
           }}
           onError={(message) => showDialog({ title: 'RUNbutan', message, confirmLabel: 'OK' })}
+          onDialog={showDialog}
         />
         {dialog}
       </>
@@ -174,12 +175,14 @@ function RunDetail({
   onDelete,
   onRenamed,
   onError,
+  onDialog,
 }: {
   run: Run;
   onBack: () => void;
   onDelete: () => void;
   onRenamed: (title: string) => void;
   onError: (message: string) => void;
+  onDialog: (o: DialogOptions) => void;
 }) {
   const [track, setTrack] = useState<TrackPt[] | null>(null);
   const [editing, setEditing] = useState(false);
@@ -206,6 +209,31 @@ function RunDetail({
     }
   };
   const canShare = !!track && track.length > 1;
+
+  // Strava's website can't be handed a file by an app, so: save the GPX to Downloads, then open the upload
+  // page, where "Choose Files" finds it. If saving is impossible, fall back to the normal share sheet.
+  const uploadToStrava = async () => {
+    try {
+      const name = await saveGpxToDownloads(run, track ?? []);
+      onDialog({
+        title: 'Ready for Strava',
+        message: `Saved "${name}" in your Downloads folder.\n\nOn the Strava page, tap "Choose Files" and pick that file. Log in first if Strava asks.`,
+        confirmLabel: 'OPEN STRAVA',
+        cancelLabel: 'NOT NOW',
+        onConfirm: () => {
+          Linking.openURL(STRAVA_UPLOAD_URL).catch(() => onError('Could not open the browser. Open strava.com/upload/select yourself; the file is in Downloads.'));
+        },
+      });
+    } catch (e) {
+      onDialog({
+        title: "Couldn't save the file",
+        message: `${e instanceof Error ? e.message : 'Saving failed.'}\n\nYou can share the file instead and upload it from there.`,
+        confirmLabel: 'SHARE FILE',
+        cancelLabel: 'CANCEL',
+        onConfirm: () => void share(),
+      });
+    }
+  };
   const badges = (run.badges ?? []).filter((b) => isEffortDistance(b.d)).sort((a, b) => a.rank - b.rank || b.d - a.d);
 
   return (
@@ -273,8 +301,11 @@ function RunDetail({
         ))}
       </ScrollView>
 
-      <Pressable style={[styles.btn, !canShare && styles.btnOff]} onPress={share} disabled={!canShare}>
-        <Text style={styles.btnText}>SHARE GPX (STRAVA)</Text>
+      <Pressable style={[styles.btn, !canShare && styles.btnOff]} onPress={uploadToStrava} disabled={!canShare}>
+        <Text style={styles.btnText}>UPLOAD TO STRAVA</Text>
+      </Pressable>
+      <Pressable onPress={share} disabled={!canShare} style={styles.delete}>
+        <Text style={[styles.deleteText, !canShare && { opacity: 0.4 }]}>Share the GPX file…</Text>
       </Pressable>
       <Pressable onPress={onDelete} style={styles.delete}>
         <Text style={styles.deleteText}>Delete run</Text>

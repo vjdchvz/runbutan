@@ -72,6 +72,10 @@ export const speakTest = () => speakNow(`Voice check. ${SPOKEN_NAME} is ready.`)
 const PACE_WINDOW_MS = 10_000; // fallback only (no speed from the phone): distance over the last 10 s
 const SPEED_ALPHA = 0.35; // real-time speed smoothing: reacts within ~3 s
 const STAND_MS = 0.4; // below this speed you are standing still
+// Strava's rule for MOVING TIME (what average pace is based on): faster than a 30-minute-mile pace counts as
+// moving, and slower time only counts as rest once it lasts more than 15 s (a quick stop at a light still counts).
+const STRAVA_MOVING_MS = 0.894; // 1609 m in 30 min
+const REST_AFTER_MS = 15_000;
 const MAX_ACCURACY_M = 35; // looser than 25 so weak city GPS doesn't stall the run
 const MAX_SPEED_MS = 12; // reject GPS jumps (~43 km/h)
 const MIN_MOVING_MS = 0.5; // below this the runner is standing still
@@ -100,7 +104,9 @@ type Listener = (s: Stats) => void;
 const listeners = new Set<Listener>();
 let pts: Pt[] = [];
 let track: TrackPt[] = []; // thinned (~2 s) route for the map + GPX
-let movingMs = 0;
+let movingMs = 0; // moving time already settled
+let slowMs = 0; // current stretch below the moving speed: counts as moving only if it ends within 15 s
+const movingTotalMs = () => movingMs + (slowMs <= REST_AFTER_MS ? slowMs : 0);
 let running = false;
 let lastAnnounceT = 0;
 let lastSplitTotalSec = 0;
@@ -185,13 +191,13 @@ const currentPace = (): number | null => {
 
 export const getStats = (): Stats => {
   const dist = pts.length ? pts[pts.length - 1].dist : 0;
-  const movingSec = movingMs / 1000;
+  const movingSec = movingTotalMs() / 1000;
   return {
     running,
     paused,
     distanceM: dist,
     movingSec,
-    currentPaceSec: currentPace(),
+    currentPaceSec: running && !paused ? currentPace() : null, // no live pace once stopped or paused
     avgPaceSec: dist > 10 ? movingSec / (dist / 1000) : null,
     splits,
     elevGainM: gainM,
@@ -301,6 +307,7 @@ export const startSession = (workout?: Workout | null, paces?: ZonePaces | null)
   gainM = 0;
   lossM = 0;
   movingMs = 0;
+  slowMs = 0;
   splits = [];
   lastSplitTotalSec = 0;
   lastAnnounceT = 0;
@@ -360,6 +367,31 @@ export const skipCoachStep = () => {
   emit();
 };
 export const getCoachResult = () => ({ workoutId: coachW?.id ?? null, finished: !!coachSt?.finished });
+
+// After a run has been saved: wipe the finished run so the RUN screen starts fresh (0.00 km, 00:00, --:--).
+export const resetSession = () => {
+  if (running) return;
+  pts = [];
+  track = [];
+  splits = [];
+  movingMs = 0;
+  slowMs = 0;
+  gainM = 0;
+  lossM = 0;
+  altSmooth = null;
+  altRef = null;
+  speedEma = null;
+  speedWall = 0;
+  anchor = null;
+  startedAt = 0;
+  stoppedAt = 0;
+  pausedMs = 0;
+  paused = false;
+  lastSplitTotalSec = 0;
+  coachW = null;
+  coachSt = null;
+  emit();
+};
 
 export const pauseSession = () => {
   if (!running || paused) return;
@@ -423,6 +455,8 @@ export const addFix = (f: {
     resumePending = false;
     pts.push({ t: f.t, lat: f.lat, lon: f.lon, dist: pts[pts.length - 1].dist });
     segStart = pts.length - 1;
+    if (slowMs > 0 && slowMs <= REST_AFTER_MS) movingMs += slowMs; // settle the slow stretch from before the pause
+    slowMs = 0;
     speedEma = null; // new segment after a pause: start the speed estimate afresh
     anchor = null;
     lastAnnounceT = f.t;
@@ -497,7 +531,16 @@ export const addFix = (f: {
     anchor = null;
   }
   const dist = prev.dist + inc;
-  if (moving) movingMs += dt * 1000;
+  // Strava-style moving time (see STRAVA_MOVING_MS): track slow stretches and decide when they end.
+  const movBefore = movingTotalMs();
+  if ((speedEma ?? 0) >= STRAVA_MOVING_MS) {
+    if (slowMs > 0 && slowMs <= REST_AFTER_MS) movingMs += slowMs; // it was only a brief slow patch
+    slowMs = 0; // a longer one was rest: dropped
+    movingMs += dt * 1000;
+  } else {
+    slowMs += dt * 1000;
+  }
+  const movAfter = movingTotalMs();
   const cur: Pt = { t: f.t, lat: f.lat, lon: f.lon, dist };
   pts.push(cur);
   if (moving) updateAlt(f.altitude, f.altitudeAccuracy);
@@ -509,9 +552,8 @@ export const addFix = (f: {
   while (moving && dist > prev.dist && dist >= (splits.length + 1) * splitM) {
     const km = splits.length + 1; // split number (km or mile)
     const frac = Math.min(1, Math.max(0, (km * splitM - prev.dist) / (dist - prev.dist)));
-    const movingAtPrev = movingMs - dt * 1000;
-    const totalSec = (movingAtPrev + frac * dt * 1000) / 1000;
-    const sp: Split = { km, splitSec: totalSec - lastSplitTotalSec, totalSec };
+    const totalSec = Math.max(lastSplitTotalSec, (movBefore + frac * Math.max(0, movAfter - movBefore)) / 1000);
+    const sp: Split = { km, splitSec: Math.max(1, totalSec - lastSplitTotalSec), totalSec };
     lastSplitTotalSec = totalSec;
     splits = [...splits, sp];
     crossed = sp;

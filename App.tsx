@@ -14,6 +14,7 @@ import {
   getCoachResult,
   getGpsDiag,
   getSplitUnit,
+  resetSession,
   skipCoachStep,
   getStartedAt,
   initVoice,
@@ -352,6 +353,7 @@ export default function App() {
         stopSession();
         deactivateKeepAwake();
         await finishRun();
+        resetSession(); // the saved run now lives in History; clear it from this screen
         setArmed(null);
         cancelRunNotification();
         setTimeout(cancelRunNotification, 1500); // in case a last update slipped in

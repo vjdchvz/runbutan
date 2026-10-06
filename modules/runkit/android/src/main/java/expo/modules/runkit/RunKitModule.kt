@@ -8,11 +8,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.ContentValues
 import android.graphics.drawable.Icon
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -83,6 +86,56 @@ class RunKitModule : Module() {
         val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         focus?.let { am.abandonAudioFocusRequest(it) }
       }
+    }
+
+    // ---- save a text file into the phone's public Downloads folder (no permission needed on Android 10+) ----
+    AsyncFunction("saveToDownloads") { name: String, content: String, mime: String ->
+      if (Build.VERSION.SDK_INT < 29) throw IllegalStateException("Saving to Downloads needs Android 10 or newer")
+      val resolver = context.contentResolver
+      val dot = name.lastIndexOf('.')
+      val stem = if (dot > 0) name.substring(0, dot) else name
+      val ext = if (dot > 0) name.substring(dot) else ""
+
+      // Android renames a clash to "name.gpx (1)", which loses the .gpx ending that websites look for.
+      // So: first remove this app's own earlier copy of the same name, and if the name is still taken
+      // (e.g. a file from another app), try name-2.gpx, name-3.gpx ... ourselves.
+      runCatching {
+        resolver.delete(
+          MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+          "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
+          arrayOf(name, "${Environment.DIRECTORY_DOWNLOADS}%")
+        )
+      }
+
+      var saved: String? = null
+      for (attempt in 1..10) {
+        val candidate = if (attempt == 1) name else "$stem-$attempt$ext"
+        val values = ContentValues().apply {
+          put(MediaStore.MediaColumns.DISPLAY_NAME, candidate)
+          put(MediaStore.MediaColumns.MIME_TYPE, mime)
+          put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+        }
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+          ?: throw IllegalStateException("Could not create the file in Downloads")
+        var finalName = candidate
+        resolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use {
+          if (it.moveToFirst()) finalName = it.getString(0)
+        }
+        if (finalName != candidate) {
+          runCatching { resolver.delete(uri, null, null) } // got renamed: discard and try the next name
+          continue
+        }
+        try {
+          resolver.openOutputStream(uri)?.use { it.write(content.toByteArray(Charsets.UTF_8)) }
+            ?: throw IllegalStateException("Could not open the file for writing")
+        } catch (e: Exception) {
+          runCatching { resolver.delete(uri, null, null) } // never leave an empty file behind
+          throw e
+        }
+        saved = finalName
+        break
+      }
+      saved ?: throw IllegalStateException("Could not find a free file name in Downloads")
     }
 
     Function("cancelRunNotification") { cancelOurs() }
