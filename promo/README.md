@@ -21,6 +21,18 @@ npm install
 npm run render        # → out/runbutan-demo.mp4 (1920x1080, 30fps, ~32s)
 ```
 
+**If `remotion.media` is blocked and you already have a Chrome/Chromium binary on the machine**
+(e.g. Playwright's, installed under `$PLAYWRIGHT_BROWSERS_PATH`), skip the download entirely by
+pointing Remotion at it directly — this is how the first render of this project actually happened:
+
+```bash
+npx remotion render src/index.ts demo out/runbutan-demo.mp4 \
+  --browser-executable=/path/to/chromium_headless_shell-*/chrome-linux/headless_shell
+```
+
+It must be the **headless_shell** build specifically — a normal `chrome`/`chromium` binary throws
+`Old Headless mode has been removed from the Chrome binary` on recent versions.
+
 To preview/edit interactively instead of rendering straight to a file:
 
 ```bash
