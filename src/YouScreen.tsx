@@ -6,11 +6,14 @@ import { loadRuns, Run } from './history';
 import { bestOverall, effortLabel } from './efforts';
 import { fmtDuration, monthGrid, monthName, monthShort, monthTotals, runDays, streak, weeklyTotals } from './stats';
 import { fmtPace, fmtTime } from './session';
+import { useSettings } from './settings';
+import { distText, kmToUnit, paceLabel, unitName, unitToKm } from './units';
 
 const GOAL_KEY = 'runbutan.goalKm';
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 export default function YouScreen() {
+  useSettings(); // redraw when the unit changes
   const [runs, setRuns] = useState<Run[]>([]);
   const [goalKm, setGoalKm] = useState(10);
   const now = new Date();
@@ -24,14 +27,16 @@ export default function YouScreen() {
   }, []);
 
   const changeGoal = (delta: number) => {
-    const next = Math.max(1, Math.min(200, goalKm + delta));
+    const next = Math.max(1, Math.min(300, goalKm + unitToKm(delta)));
     setGoalKm(next);
     AsyncStorage.setItem(GOAL_KEY, String(next)).catch(() => {});
   };
 
   const weeks = weeklyTotals(runs, 12);
   const thisWeek = weeks[weeks.length - 1];
-  const thisKm = thisWeek.distanceM / 1000;
+  const thisKm = thisWeek.distanceM / 1000; // the goal and this are both in km; shown converted below
+  const goalU = kmToUnit(goalKm);
+  const thisU = kmToUnit(thisKm);
   const sk = streak(runs);
   const efforts = bestOverall(runs);
   const days = runDays(runs, cal.y, cal.m);
@@ -54,8 +59,8 @@ export default function YouScreen() {
         <Text style={styles.label}>WEEKLY GOAL</Text>
         <View style={styles.rowBetween}>
           <Text style={styles.big}>
-            {thisKm.toFixed(1)}
-            <Text style={styles.bigSub}> / {goalKm} km</Text>
+            {thisU.toFixed(1)}
+            <Text style={styles.bigSub}> / {+goalU.toFixed(1)} {unitName()}</Text>
           </Text>
           <View style={styles.stepper}>
             <Pressable onPress={() => changeGoal(-1)} style={styles.stepBtn} hitSlop={8}>
@@ -69,19 +74,19 @@ export default function YouScreen() {
         <View style={styles.track}>
           <View style={[styles.fill, { width: `${Math.min(100, (thisKm / goalKm) * 100)}%` }]} />
         </View>
-        <Text style={styles.hint}>{thisKm >= goalKm ? 'Goal reached! 🎉' : `${(goalKm - thisKm).toFixed(1)} km to go this week`}</Text>
+        <Text style={styles.hint}>{thisKm >= goalKm ? 'Goal reached! 🎉' : `${(goalU - thisU).toFixed(1)} ${unitName()} to go this week`}</Text>
       </View>
 
       {/* This week + 12-week chart */}
       <View style={styles.card}>
         <Text style={styles.label}>THIS WEEK</Text>
         <View style={styles.row}>
-          <Stat label="DISTANCE" value={`${thisKm.toFixed(2)} km`} />
+          <Stat label="DISTANCE" value={distText(thisWeek.distanceM)} />
           <Stat label="TIME" value={fmtDuration(thisWeek.elapsedSec)} />
           <Stat label="ELEV GAIN" value={`${Math.round(thisWeek.elevM)} m`} />
         </View>
-        <Text style={[styles.label, { marginTop: 18 }]}>PAST 12 WEEKS · KM</Text>
-        <WeekChart weeks={weeks.map((w) => ({ start: w.start, km: w.distanceM / 1000 }))} />
+        <Text style={[styles.label, { marginTop: 18 }]}>PAST 12 WEEKS · {unitName().toUpperCase()}</Text>
+        <WeekChart weeks={weeks.map((w) => ({ start: w.start, km: kmToUnit(w.distanceM / 1000) }))} />
       </View>
 
       {/* Streak + calendar + monthly recap */}
@@ -113,7 +118,7 @@ export default function YouScreen() {
           <Text style={styles.label}>{monthName(cal.m).toUpperCase()} RECAP</Text>
           <View style={styles.row}>
             <Stat label="RUNS" value={String(tot.runs)} />
-            <Stat label="DISTANCE" value={`${(tot.distanceM / 1000).toFixed(1)} km`} />
+            <Stat label="DISTANCE" value={distText(tot.distanceM, 1)} />
             <Stat label="TIME" value={fmtDuration(tot.elapsedSec)} />
           </View>
           <Text style={styles.hint}>
@@ -136,7 +141,7 @@ export default function YouScreen() {
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={styles.effortTime}>{fmtTime(e.s)}</Text>
-              <Text style={styles.effortDate}>{fmtPace(e.s / (e.d / 1000))} /km</Text>
+              <Text style={styles.effortDate}>{fmtPace(e.s / (e.d / 1000))} {paceLabel()}</Text>
             </View>
           </View>
         ))}

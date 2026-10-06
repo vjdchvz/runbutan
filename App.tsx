@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Image, Pressable, Switch, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppState, BackHandler, Image, Pressable, Switch, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
@@ -13,10 +13,12 @@ import {
   getCoach,
   getCoachResult,
   getGpsDiag,
+  getSplitUnit,
   skipCoachStep,
   getStartedAt,
   initVoice,
   pauseSession,
+  sayCoach,
   resumeSession,
   speakTest,
   getStats,
@@ -30,12 +32,16 @@ import {
   TrackPt,
 } from './src/session';
 import { MIN_SAVE_DISTANCE_M, Run } from './src/history';
+import { loadSettings, useSettings } from './src/settings';
+import { distNum, paceLabel, unitName } from './src/units';
 import { badgeText } from './src/efforts';
 import { migrateEfforts } from './src/migrate';
 import { clearSnapshot, loadSnapshot, persistRun, saveSnapshot } from './src/inprogress';
 import { SEED_DEMO, seedDemo } from './src/seed';
 import YouScreen from './src/YouScreen';
 import CoachScreen, { PlanCtx } from './src/CoachScreen';
+import SettingsScreen from './src/SettingsScreen';
+import { cancelRunNotification, onRunAction, showRunNotification } from './modules/runkit';
 import { markSessionDone } from './src/coach/store';
 import { paceFmt, planById, planSessions, stepAmount, stepName, Workout } from './src/coach/workouts';
 import type { ZonePaces } from './src/coach/vdot';
@@ -43,7 +49,7 @@ import HistoryScreen from './src/HistoryScreen';
 import { useDialog } from './src/Dialog';
 import RouteMap from './src/RouteMap';
 
-type Tab = 'run' | 'history' | 'coach' | 'you';
+type Tab = 'run' | 'history' | 'coach' | 'you' | 'settings';
 type Armed = { w: Workout; ctx: PlanCtx | null; paces: ZonePaces | null };
 
 // Memoised so the 1-second clock tick and GPS updates don't redraw the other tabs.
@@ -64,12 +70,17 @@ const snapshotNow = (): { run: Run; route: TrackPt[] } => {
       elevGainM: f.elevGainM,
       avgPaceSec: f.avgPaceSec,
       splits: f.splits,
+      splitUnit: getSplitUnit(),
     },
     route: getTrack(),
   };
 };
 
 export default function App() {
+  useSettings(); // redraw everything when the unit (or any setting) changes
+  useEffect(() => {
+    loadSettings();
+  }, []);
   const [s, setS] = useState<Stats>(getStats());
   const [tab, setTab] = useState<Tab>('run');
   const { dialog, showDialog } = useDialog();
@@ -121,7 +132,7 @@ export default function App() {
       }
       showDialog({
         title: 'Unfinished run found',
-        highlight: `${(snap.run.distanceM / 1000).toFixed(2)} km · ${fmtTime(snap.run.elapsedSec ?? snap.run.movingSec)}`,
+        highlight: `${distNum(snap.run.distanceM)} ${unitName()} · ${fmtTime(snap.run.elapsedSec ?? snap.run.movingSec)}`,
         message: 'RUNbutan was closed during this run. Save what was recorded?',
         confirmLabel: 'SAVE RUN',
         cancelLabel: 'DISCARD',
@@ -174,7 +185,7 @@ export default function App() {
   const confirmStop = () =>
     showDialog({
       title: 'Stop run?',
-      highlight: `${(s.distanceM / 1000).toFixed(2)} km · ${fmtTime(getElapsedSec())}`,
+      highlight: `${distNum(s.distanceM)} ${unitName()} · ${fmtTime(getElapsedSec())}`,
       message: 'This will finish and save your run.',
       confirmLabel: 'STOP & SAVE',
       cancelLabel: 'KEEP RUNNING',
@@ -208,6 +219,63 @@ export default function App() {
     [voice, showDialog],
   );
 
+  // Android Back on the Settings page returns to the run screen.
+  useEffect(() => {
+    if (tab !== 'settings') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setTab('run');
+      return true;
+    });
+    return () => sub.remove();
+  }, [tab]);
+
+  // ---- lock-screen notification: live stats plus Pause / Stop. Stop must be pressed twice. ----
+  const stopArmedUntil = useRef(0);
+  const toggleRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    const push = () => {
+      const st = getStats();
+      if (!st.running) return;
+      const c = getCoach();
+      const live = !!c && !c.finished;
+      const title = `RUNbutan · ${fmtTime(getElapsedSec())}${st.paused ? ' · PAUSED' : ''}`;
+      const text = live && c
+        ? `Part ${c.index + 1}/${c.total} · ${stepName(c.step)} ${c.remainingSec !== null ? fmtTime(c.remainingSec) : `${c.remainingM} m`}`
+        : `${distNum(st.distanceM)} ${unitName()} · ${fmtPace(st.currentPaceSec)} ${paceLabel()}`;
+      showRunNotification(title, text, st.paused, Date.now() < stopArmedUntil.current);
+    };
+    let last = 0;
+    const unsub = subscribe(() => {
+      const now = Date.now();
+      if (now - last < 1800) return;
+      last = now;
+      push();
+    });
+    const off = onRunAction((a) => {
+      const st = getStats();
+      if (!st.running) return;
+      if (a === 'toggle') {
+        if (st.paused) resumeSession();
+        else pauseSession();
+        push();
+        return;
+      }
+      if (Date.now() < stopArmedUntil.current) {
+        stopArmedUntil.current = 0;
+        toggleRef.current();
+        return;
+      }
+      stopArmedUntil.current = Date.now() + 6000;
+      sayCoach('Tap stop again to finish.', true);
+      push();
+      setTimeout(push, 6200);
+    });
+    return () => {
+      unsub();
+      off();
+    };
+  }, []);
+
   const busy = useRef(false); // a second tap while START/STOP is still working must do nothing
 
   const finishRun = async () => {
@@ -230,7 +298,7 @@ export default function App() {
       if (counted && ctx) markSessionDone(ctx.planId, ctx.sessionId).catch(() => {});
       showDialog({
         title: 'Run not saved',
-        highlight: `${(snap.run.distanceM / 1000).toFixed(2)} km`,
+        highlight: `${distNum(snap.run.distanceM)} ${unitName()}`,
         message: counted ? `${why}\n\nYour training session was still counted as done.` : why,
         confirmLabel: snap.run.distanceM >= 1 ? 'SAVE ANYWAY' : 'OK',
         cancelLabel: snap.run.distanceM >= 1 ? 'DISCARD' : undefined,
@@ -257,7 +325,7 @@ export default function App() {
       if (lines.length) {
         showDialog({
           title: result.finished && ctx ? '🎉 Session complete!' : '🏆 New best effort!',
-          highlight: `${(snap.run.distanceM / 1000).toFixed(2)} km`,
+          highlight: `${distNum(snap.run.distanceM)} ${unitName()}`,
           message: lines.join('\n'),
           confirmLabel: 'NICE',
         });
@@ -285,6 +353,8 @@ export default function App() {
         deactivateKeepAwake();
         await finishRun();
         setArmed(null);
+        cancelRunNotification();
+        setTimeout(cancelRunNotification, 1500); // in case a last update slipped in
       } else {
         await startTracking();
         startSession(armedRef.current?.w, armedRef.current?.paces);
@@ -297,6 +367,7 @@ export default function App() {
     }
   };
 
+  toggleRef.current = () => void toggle();
   const coach = s.running ? getCoach() : null;
   const coachLive = !!coach && !coach.finished;
 
@@ -313,6 +384,7 @@ export default function App() {
           <Text style={styles.brandButan}>butan</Text>
         </Text>
         <GpsChip />
+        <Pressable onPress={() => setTab('settings')} hitSlop={10} style={styles.gear}><Text style={styles.gearText}>⚙</Text></Pressable>
       </View>
 
       <View style={styles.tabs}>
@@ -324,6 +396,8 @@ export default function App() {
 
       {!ready ? null : tab === 'history' ? (
         <HistoryTab />
+      ) : tab === 'settings' ? (
+        <SettingsScreen onBack={() => setTab('run')} muted={!voice} />
       ) : tab === 'coach' ? (
         <CoachTab running={s.running} onStartWorkout={onStartWorkout} />
       ) : tab === 'you' ? (
@@ -368,7 +442,7 @@ export default function App() {
                   <Text style={styles.coachTime}>{coach.remainingSec !== null ? fmtTime(coach.remainingSec) : `${coach.remainingM} m`}</Text>
                   <View style={styles.coachTrack}><View style={[styles.coachFill, { width: `${coach.frac * 100}%` }]} /></View>
                   <Text style={styles.coachNext}>
-                    {coach.range ? `Target ${paceFmt(coach.range[0])}–${paceFmt(coach.range[1])} /km · ` : ''}
+                    {coach.range ? `Target ${paceFmt(coach.range[0])}–${paceFmt(coach.range[1])} ${paceLabel()} · ` : ''}
                     {coach.next ? `Next: ${stepName(coach.next)} ${stepAmount(coach.next)}` : 'Last part'}
                   </Text>
                 </>
@@ -376,12 +450,12 @@ export default function App() {
             </View>
           )}
 
-          <Text style={[styles.label, s.paused && styles.paused]}>{s.paused ? '⏸ PAUSED' : 'PACE /KM'}</Text>
+          <Text style={[styles.label, s.paused && styles.paused]}>{s.paused ? '⏸ PAUSED' : `PACE ${paceLabel().toUpperCase()}`}</Text>
           <Text style={[styles.hero, coachLive && { fontSize: 56 }]}>{fmtPace(s.currentPaceSec)}</Text>
 
           <View style={styles.row}>
-            <Stat label="AVG /KM" value={fmtPace(s.avgPaceSec)} />
-            <Stat label="KM" value={(s.distanceM / 1000).toFixed(2)} />
+            <Stat label={`AVG ${paceLabel().toUpperCase()}`} value={fmtPace(s.avgPaceSec)} />
+            <Stat label={unitName().toUpperCase()} value={distNum(s.distanceM)} />
             <Stat label="TIME" value={fmtTime(getElapsedSec())} />
           </View>
           {!coachLive && (
@@ -404,8 +478,8 @@ export default function App() {
           <View style={[styles.splits, { gap: 8 }]}>
             {[...s.splits].reverse().map((sp) => (
               <View key={sp.km} style={styles.splitRow}>
-                <Text style={styles.splitKm}>KM {sp.km}</Text>
-                <Text style={styles.splitTime}>{fmtPace(sp.splitSec)}</Text>
+                <Text style={styles.splitKm}>{getSplitUnit().toUpperCase()} {sp.km}</Text>
+                <Text style={styles.splitTime}>{fmtPace(sp.splitSec / (getSplitUnit() === 'mi' ? 1.609344 : 1))} {paceLabel()}</Text>
                 <Text style={styles.splitTotal}>{fmtTime(sp.totalSec)}</Text>
               </View>
             ))}
@@ -501,6 +575,8 @@ const styles = StyleSheet.create({
   coachFill: { height: 6, backgroundColor: '#FF4D2E' },
   coachNext: { color: '#8A8A96', fontSize: 13, fontWeight: '600', marginTop: 8 },
   coachDone: { color: '#7FD67F', fontSize: 14, fontWeight: '900' },
+  gear: { marginLeft: 10, width: 38, height: 38, borderRadius: 12, backgroundColor: '#17171F', alignItems: 'center', justifyContent: 'center' },
+  gearText: { color: '#C8C8D0', fontSize: 20 },
   tabs: { flexDirection: 'row', gap: 8, marginTop: 16 },
   tab: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: '#17171F' },
   tabActive: { backgroundColor: '#FF4D2E' },

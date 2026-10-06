@@ -8,6 +8,9 @@ A free, offline-first Android running app with a voice coach. Built with Expo / 
 - **Maps**: your route on a metre grid with no signal; OpenStreetMap tiles drawn underneath when online (cached).
 - **History and stats**: activity cards with route thumbnails, weekly goal, 12-week chart, streak, month calendar and recap, best efforts (400 m to marathon) with record badges, GPX share (e.g. to Strava).
 - **Coach tab**: Couch to 5K, 5K to 10K and 5K Speed plans; quick workouts (intervals, tempo, fartlek, pyramid, goal runs) led by voice; pace zones and race predictions from your best effort (VDOT); guided warm-up, stretch and strength routines; cadence beat; heart-rate zones.
+- **Settings**: km or miles, how often the voice speaks, which numbers it reads, voice and speed, lower-the-music while speaking.
+- **Lock-screen controls**: the run notification shows time, distance and pace with Pause and Stop (Stop needs two presses within 6 s).
+- **Pace accuracy**: current pace and distance use the phone's own GPS (Doppler) speed, falling back to jitter-filtered positions on phones that do not report it.
 - **Safety**: run history stored one key per run, unfinished-run recovery, explains runs that could not be saved.
 
 ## Run it
@@ -32,7 +35,9 @@ On first start choose location **Allow all the time** and **Precise**.
 - Map tiles come from OpenStreetMap (© OpenStreetMap contributors) under its tile usage policy.
 
 ## Layout
+- `modules/runkit/` local Expo native module (Kotlin): audio ducking and the run notification with Pause / Stop
 - `src/session.ts` live run state (GPS fixes, pace, splits, pause, coaching hook)
 - `src/coach/` workouts, plans, voice-coaching engine, VDOT pace model, routines
 - `src/history.ts`, `src/inprogress.ts` storage and crash recovery
+- `src/settings.ts`, `src/units.ts` user settings and km/mi formatting
 - `src/*Screen.tsx` screens

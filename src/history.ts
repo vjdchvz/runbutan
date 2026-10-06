@@ -23,6 +23,7 @@ export type Run = {
   elevGainM?: number;
   avgPaceSec: number | null;
   splits: Split[];
+  splitUnit?: 'km' | 'mi'; // what one split was: a km (older runs) or a mile
   title?: string;
   efforts?: Effort[]; // fastest 400 m / 1 km / 5 km ... found inside this run
   badges?: Badge[]; // record callouts earned when the run was saved

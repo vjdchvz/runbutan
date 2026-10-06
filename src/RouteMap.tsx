@@ -3,6 +3,7 @@ import { Image, ImageStyle, LayoutChangeEvent, StyleProp, StyleSheet, Text, View
 import { Directory, File, Paths } from 'expo-file-system';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 import type { TrackPt } from './session';
+import { unitMeters, unitName } from './units';
 
 // Route map in Web-Mercator space. OpenStreetMap tiles are drawn underneath when there is
 // signal; without signal the metre grid stays visible, so the map never depends on data.
@@ -70,7 +71,7 @@ const range = (a: number[]): [number, number] => {
 
 type Props = { points: TrackPt[]; height?: number; emptyText?: string; plain?: boolean; follow?: boolean };
 
-const FOLLOW_SPAN_M = 300; // follow mode: the map is always about this many metres wide, centred on you
+const FOLLOW_SPAN_M = 110; // follow mode: the map is always about this many metres wide, centred on you
 
 export default function RouteMap({ points, height = 240, emptyText = 'Waiting for GPS…', plain = false, follow = false }: Props) {
   const [w, setW] = useState(0);
@@ -104,7 +105,7 @@ export default function RouteMap({ points, height = 240, emptyText = 'Waiting fo
     const sy = (y: number) => height / 2 + (y - cy) * S;
 
     // Tiles: pick the zoom whose tiles render at 256–512 px.
-    const z = Math.max(2, Math.min(18, Math.floor(Math.log2(S))));
+    const z = Math.max(2, Math.min(19, Math.floor(Math.log2(S))));
     const tileUnits = 256 / 2 ** z;
     const tilePx = tileUnits * S;
     const n = 2 ** z;
@@ -154,7 +155,7 @@ export default function RouteMap({ points, height = 240, emptyText = 'Waiting fo
           {!plain && <Line x1={12} y1={height - 16} x2={12 + stepPx} y2={height - 16} stroke={ink} strokeWidth={3} />}
           {!plain && (
             <SvgText x={12} y={height - 24} fill={ink} fontSize={11} fontWeight="700">
-              {step >= 1000 ? `${step / 1000} km` : `${step} m`}
+              {step >= 1000 ? `${+(step / unitMeters()).toFixed(1)} ${unitName()}` : `${step} m`}
             </SvgText>
           )}
           {!plain && <SvgText x={w - 20} y={22} fill={ink} fontSize={12} fontWeight="800">N</SvgText>}

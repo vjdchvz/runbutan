@@ -1,4 +1,5 @@
 import type { ZonePaces } from './vdot';
+import { distNum, paceInUnit, unitName } from '../units';
 
 export type StepKind = 'warmup' | 'run' | 'walk' | 'recover' | 'cooldown';
 export type Zone = 'easy' | 'marathon' | 'tempo' | 'interval' | 'rep';
@@ -34,10 +35,13 @@ export const fmtMin = (sec: number) => {
   const m = Math.floor(sec / 60), s = Math.round(sec % 60);
   return s ? `${m}:${String(s).padStart(2, '0')}` : `${m} min`;
 };
-export const fmtDist = (m: number) => (m < 1000 ? `${Math.round(m)} m` : `${+(m / 1000).toFixed(2)} km`);
+export const fmtDist = (m: number) => (m < 1000 ? `${Math.round(m)} m` : `${+distNum(m)} ${unitName()}`);
 export const stepAmount = (s: Step) => (s.sec !== undefined ? fmtMin(s.sec) : fmtDist(s.meters ?? 0));
 
-export const paceFmt = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+export const paceFmt = (secPerKm: number) => {
+  const sec = paceInUnit(secPerKm); // shown in the chosen unit
+  return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+};
 
 // Target pace range [fast, slow] in sec/km for a step, or null when there are no paces / no target.
 export const targetRange = (s: Step, p?: ZonePaces | null): [number, number] | null => {

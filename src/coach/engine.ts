@@ -11,7 +11,7 @@ export type CoachState = {
   started: boolean;
   finished: boolean;
 };
-export type Input = { activeSec: number; distM: number; paceSecKm: number | null; paces?: ZonePaces | null };
+export type Input = { activeSec: number; distM: number; paceSecKm: number | null; paces?: ZonePaces | null; unit?: 'km' | 'mi' };
 export type Cue = { text: string; interrupt?: boolean };
 
 export const newCoach = (): CoachState => ({ i: 0, stepStartSec: 0, stepStartM: 0, flags: {}, lastPaceCue: -999, started: false, finished: false });
@@ -21,14 +21,18 @@ const spokenDur = (sec: number) => {
   const parts = [m ? `${m} ${m === 1 ? 'minute' : 'minutes'}` : '', s ? `${s} seconds` : ''].filter(Boolean);
   return parts.join(' ');
 };
-const spokenDist = (m: number) => (m < 1000 ? `${Math.round(m)} meters` : `${+(m / 1000).toFixed(2)} kilometers`);
-const spokenPace = (sec: number) => `${Math.floor(sec / 60)} ${String(Math.round(sec % 60)).padStart(2, '0')}`;
+const spokenDist = (m: number, unit: 'km' | 'mi' = 'km') =>
+  m < 1000 ? `${Math.round(m)} meters` : unit === 'mi' ? `${+(m / 1609.344).toFixed(2)} miles` : `${+(m / 1000).toFixed(2)} kilometers`;
+const spokenPace = (sec: number, unit: 'km' | 'mi' = 'km') => {
+  const p = unit === 'mi' ? sec * 1.609344 : sec;
+  return `${Math.floor(p / 60)} ${String(Math.round(p % 60)).padStart(2, '0')}`;
+};
 
-const startCue = (s: Step, paces?: ZonePaces | null) => {
-  const amount = s.sec !== undefined ? spokenDur(s.sec) : spokenDist(s.meters ?? 0);
+const startCue = (s: Step, paces?: ZonePaces | null, unit: 'km' | 'mi' = 'km') => {
+  const amount = s.sec !== undefined ? spokenDur(s.sec) : spokenDist(s.meters ?? 0, unit);
   const range = targetRange(s, paces);
   const tail = range
-    ? ` Target pace ${spokenPace((range[0] + range[1]) / 2)} per kilometer.`
+    ? ` Target pace ${spokenPace((range[0] + range[1]) / 2, unit)} per ${unit === 'mi' ? 'mile' : 'kilometer'}.`
     : s.zone ? ` ${effortWord(s.zone)}.` : '';
   return `${stepName(s)}. ${amount}.${tail}`;
 };
@@ -79,11 +83,12 @@ const toNext = (st: CoachState, w: Workout, inp: Input, cues: Cue[]) => {
   st.lastPaceCue = inp.activeSec;
   if (st.i >= w.steps.length) {
     st.finished = true;
-    const km = (inp.distM / 1000).toFixed(2);
-    cues.push({ text: `Workout complete. ${km} kilometers in ${spokenDur(inp.activeSec)}. Great job!`, interrupt: true });
+    const unitM = inp.unit === 'mi' ? 1609.344 : 1000;
+    const km = (inp.distM / unitM).toFixed(2);
+    cues.push({ text: `Workout complete. ${km} ${inp.unit === 'mi' ? 'miles' : 'kilometers'} in ${spokenDur(inp.activeSec)}. Great job!`, interrupt: true });
     return false;
   }
-  cues.push({ text: startCue(w.steps[st.i], inp.paces), interrupt: true });
+  cues.push({ text: startCue(w.steps[st.i], inp.paces, inp.unit), interrupt: true });
   return true;
 };
 
@@ -102,7 +107,7 @@ export const advance = (st: CoachState, w: Workout, inp: Input): Cue[] => {
     st.stepStartSec = inp.activeSec;
     st.stepStartM = inp.distM;
     const mins = Math.round(workoutSeconds(w) / 60);
-    cues.push({ text: `Starting ${w.name}. ${w.steps.length} parts, about ${mins} minutes. ${startCue(w.steps[0], inp.paces)}`, interrupt: true });
+    cues.push({ text: `Starting ${w.name}. ${w.steps.length} parts, about ${mins} minutes. ${startCue(w.steps[0], inp.paces, inp.unit)}`, interrupt: true });
   }
 
   for (let guard = 0; guard < 25 && !st.finished; guard++) {
@@ -129,11 +134,11 @@ export const advance = (st: CoachState, w: Workout, inp: Input): Cue[] => {
     } else {
       if (m.total >= 1000 && !st.flags.half && m.done >= m.total / 2) {
         st.flags.half = true;
-        cues.push({ text: `Halfway. ${spokenDist(m.remaining)} to go.` });
+        cues.push({ text: `Halfway. ${spokenDist(m.remaining, inp.unit)} to go.` });
       }
       if (m.total >= 1000 && !st.flags.near && m.remaining <= 400) {
         st.flags.near = true;
-        cues.push({ text: `${spokenDist(m.remaining)} to go. Finish strong.` });
+        cues.push({ text: `${spokenDist(m.remaining, inp.unit)} to go. Finish strong.` });
       }
     }
     // Pace feedback against the step's target pace.

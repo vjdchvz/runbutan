@@ -7,6 +7,8 @@ import RouteMap from './RouteMap';
 import { useDialog } from './Dialog';
 import { fmtPace, fmtTime, TrackPt } from './session';
 import { runTitle } from './stats';
+import { useSettings } from './settings';
+import { distNum, paceLabel, unitName } from './units';
 
 const fmtDate = (t: number) => {
   const d = new Date(t);
@@ -27,6 +29,7 @@ const queueThumb = (job: () => Promise<void>) => {
 const MEDAL = { 1: '🏆', 2: '🥈', 3: '🥉' } as const;
 
 export default function HistoryScreen() {
+  useSettings(); // redraw when the unit changes
   const [runs, setRuns] = useState<Run[]>([]);
   const { dialog, showDialog } = useDialog();
   const [selected, setSelected] = useState<Run | null>(null);
@@ -49,7 +52,7 @@ export default function HistoryScreen() {
   const confirmDelete = (r: Run) =>
     showDialog({
       title: 'Delete run?',
-      highlight: `${(r.distanceM / 1000).toFixed(2)} km`,
+      highlight: `${distNum(r.distanceM)} ${unitName()}`,
       message: `${fmtDate(r.startedAt)}\nThis can't be undone.`,
       confirmLabel: 'DELETE',
       cancelLabel: 'CANCEL',
@@ -86,15 +89,15 @@ export default function HistoryScreen() {
       {dialog}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
         <View>
-          <Text style={styles.label}>ALL RUNS · AVG PACE /KM</Text>
+          <Text style={styles.label}>ALL RUNS · AVG PACE {paceLabel().toUpperCase()}</Text>
           <Text style={styles.hero}>{fmtPace(sum.avgPaceSec)}</Text>
           <View style={styles.row}>
             <Stat label="RUNS" value={String(sum.runs)} />
-            <Stat label="TOTAL KM" value={(sum.distanceM / 1000).toFixed(2)} />
+            <Stat label={`TOTAL ${unitName().toUpperCase()}`} value={distNum(sum.distanceM)} />
             <Stat label="TIME" value={fmtTime(sum.elapsedSec)} />
           </View>
           <View style={styles.row}>
-            <Stat label="AVG KM/RUN" value={(sum.avgDistanceM / 1000).toFixed(2)} />
+            <Stat label={`AVG ${unitName().toUpperCase()}/RUN`} value={distNum(sum.avgDistanceM)} />
             <Stat label="BEST AVG" value={fmtPace(sum.bestAvgPaceSec)} />
             <Stat label="TOTAL ELEV ▲" value={`${Math.round(sum.elevGainM)} m`} />
           </View>
@@ -140,11 +143,11 @@ function RunCard({ run, onPress, onLongPress }: { run: Run; onPress: () => void;
       <View style={styles.cardRow}>
         <View>
           <Text style={styles.cardLabel}>DISTANCE</Text>
-          <Text style={styles.cardKm}>{(run.distanceM / 1000).toFixed(2)} km</Text>
+          <Text style={styles.cardKm}>{distNum(run.distanceM)} {unitName()}</Text>
         </View>
         <View>
           <Text style={styles.cardLabel}>PACE</Text>
-          <Text style={styles.cardPace}>{fmtPace(run.avgPaceSec)} /km</Text>
+          <Text style={styles.cardPace}>{fmtPace(run.avgPaceSec)} {paceLabel()}</Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={styles.cardLabel}>TIME</Text>
@@ -232,8 +235,8 @@ function RunDetail({
       <Text style={styles.date2}>{fmtDate(run.startedAt)}</Text>
 
       <View style={styles.row}>
-        <Stat label="KM" value={(run.distanceM / 1000).toFixed(2)} />
-        <Stat label="AVG /KM" value={fmtPace(run.avgPaceSec)} />
+        <Stat label={unitName().toUpperCase()} value={distNum(run.distanceM)} />
+        <Stat label={`AVG ${paceLabel().toUpperCase()}`} value={fmtPace(run.avgPaceSec)} />
         <Stat label="TIME" value={fmtTime(run.elapsedSec ?? run.movingSec)} />
       </View>
       {run.elevGainM !== undefined && (
@@ -257,14 +260,14 @@ function RunDetail({
           <View key={e.d} style={styles.splitRow}>
             <Text style={styles.splitKm}>{effortLabel(e.d)}</Text>
             <Text style={styles.splitTime}>{fmtTime(e.s)}</Text>
-            <Text style={styles.cardTime}>{fmtPace(e.s / (e.d / 1000))} /km</Text>
+            <Text style={styles.cardTime}>{fmtPace(e.s / (e.d / 1000))} {paceLabel()}</Text>
           </View>
         ))}
-        {run.splits.length > 0 && <Text style={[styles.label, { marginTop: 6 }]}>KM SPLITS</Text>}
+        {run.splits.length > 0 && <Text style={[styles.label, { marginTop: 6 }]}>{(run.splitUnit ?? 'km').toUpperCase()} SPLITS</Text>}
         {run.splits.map((sp) => (
           <View key={sp.km} style={styles.splitRow}>
-            <Text style={styles.splitKm}>KM {sp.km}</Text>
-            <Text style={styles.splitTime}>{fmtPace(sp.splitSec)}</Text>
+            <Text style={styles.splitKm}>{(run.splitUnit ?? 'km').toUpperCase()} {sp.km}</Text>
+            <Text style={styles.splitTime}>{fmtPace(sp.splitSec / (run.splitUnit === 'mi' ? 1.609344 : 1))} {paceLabel()}</Text>
             <Text style={styles.cardTime}>{fmtTime(sp.totalSec)}</Text>
           </View>
         ))}

@@ -1,3 +1,4 @@
+import { PermissionsAndroid, Platform } from 'react-native';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { addFix } from './session';
@@ -13,6 +14,7 @@ TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
       lon: l.coords.longitude,
       t: l.timestamp,
       accuracy: l.coords.accuracy,
+      speed: l.coords.speed,
       altitude: l.coords.altitude,
       altitudeAccuracy: l.coords.altitudeAccuracy,
     });
@@ -31,6 +33,14 @@ export const startTracking = async () => {
   }
   const bg = await Location.requestBackgroundPermissionsAsync();
   if (bg.status !== 'granted') throw new Error('Allow location "All the time" so tracking survives screen-off');
+
+  if (Platform.OS === 'android' && Platform.Version >= 33) {
+    try {
+      await PermissionsAndroid.request('android.permission.POST_NOTIFICATIONS' as never); // not required to run, only to show the notification
+    } catch {
+      // ignore
+    }
+  }
 
   await Location.startLocationUpdatesAsync(LOCATION_TASK, {
     accuracy: Location.Accuracy.BestForNavigation,

@@ -12,6 +12,8 @@ import { ROUTINES, routineSeconds, Routine } from './coach/routines';
 import { getNum, KEYS, loadPlan, PlanProgress, savePlan, setNum } from './coach/store';
 import RoutineRunner from './RoutineRunner';
 import { useDialog } from './Dialog';
+import { useSettings } from './settings';
+import { distText, paceLabel } from './units';
 
 export type PlanCtx = { planId: string; sessionId: string };
 type Props = { running: boolean; onStartWorkout: (w: Workout, ctx: PlanCtx | null, paces: ZonePaces | null) => void };
@@ -50,6 +52,7 @@ const compress = (steps: Step[]): string[] => {
 };
 
 export default function CoachScreen({ running, onStartWorkout }: Props) {
+  useSettings(); // redraw when the unit changes
   const { dialog, showDialog } = useDialog();
   const [view, setView] = useState<ViewState>({ t: 'home' });
   const [runs, setRuns] = useState<Run[]>([]);
@@ -174,12 +177,12 @@ export default function CoachScreen({ running, onStartWorkout }: Props) {
         <View style={styles.row}>
           <Stat label="TIME" value={`~${Math.round(workoutSeconds(w) / 60)} min`} />
           <Stat label="PARTS" value={String(w.steps.length)} />
-          {workoutMeters(w) > 0 && <Stat label="DISTANCE" value={`${(workoutMeters(w) / 1000).toFixed(1)} km`} />}
+          {workoutMeters(w) > 0 && <Stat label="DISTANCE" value={distText(workoutMeters(w), 1)} />}
         </View>
         <View style={styles.card}>
           <Text style={styles.label}>STRUCTURE</Text>
           {compress(w.steps).map((l, i) => <Text key={i} style={styles.line}>{l}</Text>)}
-          {w.steps.some((s) => targetRange(s, paces)) && <Text style={[styles.hint, { marginTop: 10 }]}>Hard parts use your pace zones, e.g. tempo {paceFmt(paces.tempo)} /km.</Text>}
+          {w.steps.some((s) => targetRange(s, paces)) && <Text style={[styles.hint, { marginTop: 10 }]}>Hard parts use your pace zones, e.g. tempo {paceFmt(paces.tempo)} {paceLabel()}.</Text>}
         </View>
         <Text style={styles.hint}>🔊 The voice coach announces every part, counts you down and tells you when to speed up or ease off. Keep voice call-outs on.</Text>
         <Pressable style={[styles.btn, running && styles.btnOff]} disabled={running} onPress={() => start(w, view.ctx)}>
@@ -300,7 +303,7 @@ export default function CoachScreen({ running, onStartWorkout }: Props) {
         ] as const).map(([n, p, d]) => (
           <View key={n} style={styles.zoneRow}>
             <View><Text style={styles.line}>{n}</Text><Text style={styles.hint2}>{d}</Text></View>
-            <Text style={styles.zone}>{p} /km</Text>
+            <Text style={styles.zone}>{p} {paceLabel()}</Text>
           </View>
         ))}
         <View style={styles.stepRow}>

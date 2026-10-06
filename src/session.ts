@@ -1,6 +1,9 @@
 import * as Speech from 'expo-speech';
 import { advance, CoachState, newCoach, skipStep, status as coachStatus } from './coach/engine';
 import type { ZonePaces } from './coach/vdot';
+import { getSettings, Unit } from './settings';
+import { distNum, paceInUnit, unitMeters, unitWord, unitWordSingular } from './units';
+import { abandonDuck, requestDuck } from '../modules/runkit';
 import type { Workout } from './coach/workouts';
 
 let voiceOn = true;
@@ -18,19 +21,57 @@ export const initVoice = async () => {
   }
 };
 
+// How the app's name is spoken (the voice would spell "RUN" out letter by letter).
+export const SPOKEN_NAME = 'Rambutan';
+
+// Audio focus: while the coach speaks, other audio (music) is asked to lower its volume.
+let speaking = 0;
+let focusGuard: ReturnType<typeof setTimeout> | null = null;
+const releaseFocus = () => {
+  speaking = Math.max(0, speaking - 1);
+  if (speaking === 0) {
+    if (focusGuard) clearTimeout(focusGuard);
+    abandonDuck();
+  }
+};
+
 const speakNow = (text: string, interrupt = false) => {
   if (!voiceOn) return;
+  const st = getSettings();
   if (interrupt) Speech.stop(); // a new instruction should cut off the previous sentence
+  const duck = st.duck;
+  if (duck) {
+    speaking++;
+    requestDuck();
+    // safety net: if the speech engine never reports "done", don't leave the music turned down
+    if (focusGuard) clearTimeout(focusGuard);
+    focusGuard = setTimeout(() => {
+      speaking = 0;
+      abandonDuck();
+    }, 20000);
+  }
+  const done = () => {
+    if (duck) releaseFocus();
+  };
+  const voice = st.voiceId ?? voiceId;
   Speech.speak(text, {
-    ...(voiceId ? { voice: voiceId } : { language: 'en-US' }),
-    onError: () => Speech.speak(text), // retry once with the engine default
+    ...(voice ? { voice } : { language: 'en-US' }),
+    rate: st.rate,
+    onDone: done,
+    onStopped: done,
+    onError: () => {
+      done();
+      Speech.speak(text, { rate: st.rate }); // retry once with the engine default
+    },
   });
 };
 export const sayCoach = (text: string, interrupt = false) => speakNow(text, interrupt);
 export const stopSpeech = () => Speech.stop();
-export const speakTest = () => speakNow('Voice check. RUNbutan is ready.');
+export const speakTest = () => speakNow(`Voice check. ${SPOKEN_NAME} is ready.`);
 
-export const ANNOUNCE_EVERY_MS = 30_000;
+const PACE_WINDOW_MS = 10_000; // fallback only (no speed from the phone): distance over the last 10 s
+const SPEED_ALPHA = 0.35; // real-time speed smoothing: reacts within ~3 s
+const STAND_MS = 0.4; // below this speed you are standing still
 const MAX_ACCURACY_M = 35; // looser than 25 so weak city GPS doesn't stall the run
 const MAX_SPEED_MS = 12; // reject GPS jumps (~43 km/h)
 const MIN_MOVING_MS = 0.5; // below this the runner is standing still
@@ -79,15 +120,23 @@ let resumePending = false;
 let segStart = 0; // index in pts where the current (post-resume) segment begins
 let waitedForGps = false;
 let staleDropped = 0;
+let splitM = 1000; // length of one split (1 km or 1 mile), fixed for the whole run
+let splitUnit: Unit = 'km';
 let coachW: Workout | null = null;
 let coachSt: CoachState | null = null;
 let coachPaces: ZonePaces | null = null;
 let coachTimer: ReturnType<typeof setInterval> | null = null;
 let fixesSeen = 0;
+let speedEma: number | null = null; // smoothed real-time speed, m/s
+let dopplerSeen = false; // has this phone ever reported a real (non-zero) speed this run?
+let anchor: { lat: number; lon: number } | null = null; // jitter-proof distance anchor (phones without speed)
+let speedWall = 0; // wall-clock time of the last speed update
 let bestAcc: number | null = null;
 
 export const fmtPace = (sec: number | null) => {
-  if (sec === null || !isFinite(sec) || sec <= 0 || sec > 3599) return '--:--';
+  if (sec === null || !isFinite(sec) || sec <= 0) return '--:--';
+  sec = paceInUnit(sec); // callers pass seconds per km; show it in the chosen unit
+  if (sec > 3599) return '--:--';
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
   return s === 60 ? `${m + 1}:00` : `${m}:${String(s).padStart(2, '0')}`;
@@ -114,9 +163,14 @@ const haversine = (a: Pt | { lat: number; lon: number }, lat: number, lon: numbe
 };
 
 const currentPace = (): number | null => {
+  // Real-time: the smoothed speed. Stale (no fix for 6 s) or standing still means no pace.
+  if (speedEma !== null) {
+    if (Date.now() - speedWall > 6000 || speedEma < STAND_MS) return null;
+    return 1000 / speedEma;
+  }
   if (pts.length - segStart < 2) return null;
   const last = pts[pts.length - 1];
-  const target = last.t - ANNOUNCE_EVERY_MS;
+  const target = last.t - PACE_WINDOW_MS;
   let ref = pts[segStart];
   for (let i = pts.length - 1; i >= segStart; i--) {
     if (pts[i].t <= target) {
@@ -126,7 +180,7 @@ const currentPace = (): number | null => {
   }
   const dM = last.dist - ref.dist;
   const dS = (last.t - ref.t) / 1000;
-  return dM > 5 ? dS / (dM / 1000) : null;
+  return dM > 3 && dS > 0 ? dS / (dM / 1000) : null;
 };
 
 export const getStats = (): Stats => {
@@ -160,32 +214,36 @@ export const subscribe = (l: Listener) => {
 };
 
 const speakPace = (s: Stats) => {
-  const say = (p: number | null) => {
-    if (p === null) return null;
+  const st = getSettings();
+  const say = (secPerKm: number | null) => {
+    if (secPerKm === null) return null;
+    const p = paceInUnit(secPerKm);
     const m = Math.floor(p / 60);
     const sec = Math.round(p % 60);
     return `${m} minutes ${sec} seconds`;
   };
   const cur = say(s.currentPaceSec);
   const avg = say(s.avgPaceSec);
-  const km = (s.distanceM / 1000).toFixed(2);
   const parts = [
-    cur ? `Pace ${cur}.` : null,
-    avg ? `Average ${avg}.` : null,
-    `${km} kilometers.`,
+    st.sayPace && cur ? `Pace ${cur}.` : null,
+    st.sayAvg && avg ? `Average ${avg}.` : null,
+    st.sayDist ? `${distNum(s.distanceM)} ${unitWord()}.` : null,
+    st.sayTime ? `Time ${fmtTime(s.movingSec)}.` : null,
   ].filter(Boolean);
-  speakNow(parts.join(' '));
+  if (parts.length) speakNow(parts.join(' '));
 };
 
 const speakSplit = (sp: Split) => {
+  if (!getSettings().saySplits) return;
   const m = Math.floor(sp.splitSec / 60);
   const s = Math.round(sp.splitSec % 60);
   speakNow(
-    `Kilometer ${sp.km} done. Split ${m} minutes ${s} seconds. Total time ${fmtTime(sp.totalSec)}.`,
+    `${unitWordSingular()} ${sp.km} done. Split ${m} minutes ${s} seconds. Total time ${fmtTime(sp.totalSec)}.`,
   );
 };
 
 export const getStartedAt = () => startedAt;
+export const getSplitUnit = () => splitUnit;
 
 // Wall-clock time since START: keeps ticking even when GPS fixes stop arriving.
 export const getElapsedSec = () => {
@@ -255,12 +313,18 @@ export const startSession = (workout?: Workout | null, paces?: ZonePaces | null)
   resumePending = false;
   segStart = 0;
   staleDropped = 0;
+  splitM = unitMeters();
+  splitUnit = getSettings().unit;
   coachW = workout ?? null;
   coachSt = workout ? newCoach() : null;
   coachPaces = paces ?? null;
   if (coachTimer) clearInterval(coachTimer);
   coachTimer = workout ? setInterval(() => coachTick(), 1000) : null;
   fixesSeen = 0;
+  speedEma = null;
+  speedWall = 0;
+  dopplerSeen = false;
+  anchor = null;
   bestAcc = null;
   const g = getGps();
   waitedForGps = !(g.accuracy !== null && g.ageMs < 8000 && g.accuracy <= MAX_ACCURACY_M);
@@ -275,6 +339,7 @@ const coachInput = () => ({
   distM: pts.length ? pts[pts.length - 1].dist : 0,
   paceSecKm: currentPace(),
   paces: coachPaces,
+  unit: getSettings().unit,
 });
 const coachLive = () => !!coachW && !!coachSt && !coachSt.finished;
 
@@ -326,7 +391,7 @@ export const stopSession = () => {
   stoppedAt = Date.now();
   const s = getStats();
   speakNow(
-    `Run finished. ${(s.distanceM / 1000).toFixed(2)} kilometers in ${fmtTime(s.movingSec)}.`,
+    `Run finished. ${distNum(s.distanceM)} ${unitWord()} in ${fmtTime(s.movingSec)}.`,
   );
   emit();
 };
@@ -336,6 +401,7 @@ export const addFix = (f: {
   lon: number;
   t: number;
   accuracy: number | null;
+  speed?: number | null; // the phone's own GPS (Doppler) speed in m/s
   altitude?: number | null;
   altitudeAccuracy?: number | null;
 }) => {
@@ -357,6 +423,8 @@ export const addFix = (f: {
     resumePending = false;
     pts.push({ t: f.t, lat: f.lat, lon: f.lon, dist: pts[pts.length - 1].dist });
     segStart = pts.length - 1;
+    speedEma = null; // new segment after a pause: start the speed estimate afresh
+    anchor = null;
     lastAnnounceT = f.t;
     rec(f);
     emit();
@@ -387,8 +455,48 @@ export const addFix = (f: {
     if (f.t - pts[i].t >= 5000) break;
   }
   const winS = (f.t - ref.t) / 1000;
-  const moving = winS > 0 && haversine(ref, f.lat, f.lon) / winS >= MIN_MOVING_MS;
-  const dist = prev.dist + (moving ? d : 0);
+  const winSpeed = winS > 0 ? haversine(ref, f.lat, f.lon) / winS : 0;
+  // A longer ~10 s window for phones with no speed: noisy positions need more averaging.
+  let ref10 = ref;
+  for (let i = pts.length - 1; i >= segStart; i--) {
+    ref10 = pts[i];
+    if (f.t - pts[i].t >= 10000) break;
+  }
+  const win10S = (f.t - ref10.t) / 1000;
+  const winSpeed10 = win10S > 0 ? haversine(ref10, f.lat, f.lon) / win10S : winSpeed;
+
+  // The phone's own speed (Doppler) is far more accurate than differences between noisy positions.
+  // Some phones always report 0: if it says "still" while positions clearly moved, ignore it.
+  const dop = f.speed != null && isFinite(f.speed) && f.speed >= 0 && (f.accuracy === null || f.accuracy <= 30) ? f.speed : null;
+  if (dop !== null && dop > 0.3) dopplerSeen = true;
+  // A "0" speed is only believed once this phone has shown a real, non-zero speed during the run. Until then
+  // the positions decide, because some phones (and the emulator) always report 0 even while moving.
+  const useDop = dop !== null && dopplerSeen;
+  const instSpeed = useDop ? (dop as number) : winSpeed10;
+  speedEma = speedEma === null ? instSpeed : speedEma + SPEED_ALPHA * (instSpeed - speedEma);
+  speedWall = Date.now();
+
+  const moving = useDop ? (dop as number) >= STAND_MS : winSpeed >= MIN_MOVING_MS;
+  // Distance. Raw GPS positions jitter by a few metres, and adding up that jitter makes slow walking look
+  // far longer than it was. So: with a trusted speed, distance = speed x time (accurate to ~1%).
+  // Without speed, only count a step once you have moved clearly further than the GPS noise.
+  let inc = 0;
+  if (moving) {
+    if (useDop) {
+      const v = (dop as number) * dt;
+      inc = dt <= 3 ? v : Math.min(d, v * 1.3 + 2);
+    } else {
+      if (!anchor) anchor = { lat: prev.lat, lon: prev.lon };
+      const da = haversine(anchor, f.lat, f.lon);
+      if (da >= Math.max(10, (f.accuracy ?? 8) * 2.5)) {
+        inc = da;
+        anchor = { lat: f.lat, lon: f.lon };
+      }
+    }
+  } else {
+    anchor = null;
+  }
+  const dist = prev.dist + inc;
   if (moving) movingMs += dt * 1000;
   const cur: Pt = { t: f.t, lat: f.lat, lon: f.lon, dist };
   pts.push(cur);
@@ -398,9 +506,9 @@ export const addFix = (f: {
   // Kilometer splits — interpolate the exact crossing time between fixes.
   // A long GPS gap can cross several km marks in one step, so record every one that was crossed.
   let crossed: Split | null = null;
-  while (moving && dist > prev.dist && dist >= (splits.length + 1) * 1000) {
-    const km = splits.length + 1;
-    const frac = Math.min(1, Math.max(0, (km * 1000 - prev.dist) / (dist - prev.dist)));
+  while (moving && dist > prev.dist && dist >= (splits.length + 1) * splitM) {
+    const km = splits.length + 1; // split number (km or mile)
+    const frac = Math.min(1, Math.max(0, (km * splitM - prev.dist) / (dist - prev.dist)));
     const movingAtPrev = movingMs - dt * 1000;
     const totalSec = (movingAtPrev + frac * dt * 1000) / 1000;
     const sp: Split = { km, splitSec: totalSec - lastSplitTotalSec, totalSec };
@@ -411,7 +519,7 @@ export const addFix = (f: {
   if (crossed) {
     speakSplit(crossed);
     lastAnnounceT = f.t; // avoid talking over the split call-out
-  } else if (!coachLive() && f.t - lastAnnounceT >= ANNOUNCE_EVERY_MS) {
+  } else if (!coachLive() && getSettings().announceSec > 0 && f.t - lastAnnounceT >= getSettings().announceSec * 1000) {
     lastAnnounceT = f.t;
     speakPace(getStats());
   }
