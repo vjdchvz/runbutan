@@ -4,6 +4,7 @@ import type { ZonePaces } from './coach/vdot';
 import { getSettings, Unit } from './settings';
 import { distNum, paceInUnit, unitMeters, unitWord, unitWordSingular } from './units';
 import { abandonDuck, requestDuck } from '../modules/runkit';
+import { holdBeat, setBeatOn } from './beat';
 import type { Workout } from './coach/workouts';
 
 let voiceOn = true;
@@ -311,6 +312,7 @@ export const startSession = (workout?: Workout | null, paces?: ZonePaces | null)
   splits = [];
   lastSplitTotalSec = 0;
   lastAnnounceT = 0;
+  coachSpokeAt = 0;
   running = true;
   startedAt = Date.now();
   stoppedAt = 0;
@@ -350,9 +352,13 @@ const coachInput = () => ({
 });
 const coachLive = () => !!coachW && !!coachSt && !coachSt.finished;
 
+let coachSpokeAt = 0;
 const runCoach = () => {
   if (!coachW || !coachSt || !running || paused) return;
-  for (const c of advance(coachSt, coachW, coachInput())) speakNow(c.text, c.interrupt);
+  for (const c of advance(coachSt, coachW, coachInput())) {
+    speakNow(c.text, c.interrupt);
+    coachSpokeAt = Date.now();
+  }
 };
 // Called once a second by the screen, and on every GPS fix, so step changes keep coming with the screen off.
 export const coachTick = () => {
@@ -397,6 +403,7 @@ export const pauseSession = () => {
   if (!running || paused) return;
   paused = true;
   pauseStartedAt = Date.now();
+  holdBeat(true);
   speakNow('Run paused.');
   emit();
 };
@@ -406,6 +413,7 @@ export const resumeSession = () => {
   pausedMs += Date.now() - pauseStartedAt;
   paused = false;
   resumePending = true; // next good fix re-anchors, so the pause gap adds no time or distance
+  holdBeat(false);
   speakNow('Run resumed.');
   emit();
 };
@@ -421,6 +429,8 @@ export const stopSession = () => {
     coachTimer = null;
   }
   stoppedAt = Date.now();
+  holdBeat(false);
+  setBeatOn(false); // the run is over: so is the beat
   const s = getStats();
   speakNow(
     `Run finished. ${distNum(s.distanceM)} ${unitWord()} in ${fmtTime(s.movingSec)}.`,
@@ -561,7 +571,11 @@ export const addFix = (f: {
   if (crossed) {
     speakSplit(crossed);
     lastAnnounceT = f.t; // avoid talking over the split call-out
-  } else if (!coachLive() && getSettings().announceSec > 0 && f.t - lastAnnounceT >= getSettings().announceSec * 1000) {
+  } else if (
+    getSettings().announceSec > 0 &&
+    f.t - lastAnnounceT >= getSettings().announceSec * 1000 &&
+    Date.now() - coachSpokeAt >= 8000 // during a guided workout: never talk over a coach instruction
+  ) {
     lastAnnounceT = f.t;
     speakPace(getStats());
   }

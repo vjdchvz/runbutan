@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Pressable, ScrollView, StyleSheet, Text, Vibration, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { setBeatBpm, setBeatOn, useBeat } from './beat';
 import { loadRuns, Run } from './history';
 import { effortLabel } from './efforts';
 import { fmtTime } from './session';
@@ -13,7 +14,7 @@ import { getNum, KEYS, loadPlan, PlanProgress, savePlan, setNum } from './coach/
 import { applyAdaptation, computeAdaptation, loadOutcomes, type SessionOutcome } from './coach/adapt';
 import RoutineRunner from './RoutineRunner';
 import { useDialog } from './Dialog';
-import { useSettings } from './settings';
+import { updateSettings, useSettings } from './settings';
 import { distText, paceLabel } from './units';
 
 export type PlanCtx = { planId: string; sessionId: string };
@@ -61,8 +62,7 @@ export default function CoachScreen({ running, onStartWorkout }: Props) {
   const [outcomes, setOutcomes] = useState<SessionOutcome[]>([]);
   const [manual5k, setManual5k] = useState<number | null>(null);
   const [age, setAge] = useState(30);
-  const [bpm, setBpm] = useState(170);
-  const [beat, setBeat] = useState(false);
+  const { on: beat, bpm } = useBeat();
 
   const reload = useCallback(() => {
     loadRuns().then(setRuns);
@@ -72,7 +72,7 @@ export default function CoachScreen({ running, onStartWorkout }: Props) {
     reload();
     getNum(KEYS.fiveK).then(setManual5k);
     getNum(KEYS.age).then((v) => v && setAge(v));
-    getNum(KEYS.cadence).then((v) => v && setBpm(v));
+    getNum(KEYS.cadence).then((v) => v && setBeatBpm(v));
   }, [reload]);
   // Adaptive coaching's input: how the last few sessions of the active plan actually went.
   useEffect(() => {
@@ -92,15 +92,6 @@ export default function CoachScreen({ running, onStartWorkout }: Props) {
     return () => sub.remove();
   }, [view.t]);
 
-  // Cadence beat: a short vibration on every step. Stops when you leave the screen.
-  const beatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => {
-    if (beatTimer.current) clearInterval(beatTimer.current);
-    if (beat) beatTimer.current = setInterval(() => Vibration.vibrate(30), 60000 / bpm);
-    return () => {
-      if (beatTimer.current) clearInterval(beatTimer.current);
-    };
-  }, [beat, bpm]);
 
   // ---- pace zones from your best effort (or a 5K time you set) ----
   let auto: { vdot: number; label: string } | null = null;
@@ -130,9 +121,14 @@ export default function CoachScreen({ running, onStartWorkout }: Props) {
     setAge(n);
     setNum(KEYS.age, n);
   };
+  const weightKg = st.weightKg;
+  const changeWeight = (d: number) => {
+    const n = Math.max(30, Math.min(200, (weightKg ?? 70) + (weightKg ? d : 0)));
+    updateSettings({ weightKg: n });
+  };
   const changeBpm = (d: number) => {
     const n = Math.max(140, Math.min(200, bpm + d));
-    setBpm(n);
+    setBeatBpm(n);
     setNum(KEYS.cadence, n);
   };
 
@@ -367,16 +363,28 @@ export default function CoachScreen({ running, onStartWorkout }: Props) {
       <Text style={styles.section}>TOOLS</Text>
       <View style={styles.card}>
         <Text style={styles.label}>CADENCE BEAT</Text>
-        <Text style={styles.hint}>A gentle vibration on every step, to keep a steady stride (about 170–180 is common).</Text>
+        <Text style={styles.hint}>A gentle vibration on every step, to keep a steady stride (about 170–180 is common). Keeps going with the screen off; pauses with your run.</Text>
         <View style={styles.stepRow}>
           <View style={styles.stepper}>
             <Pressable onPress={() => changeBpm(-2)} style={styles.stepBtn} hitSlop={8}><Text style={styles.stepText}>−</Text></Pressable>
             <Text style={styles.stepVal}>{bpm} spm</Text>
             <Pressable onPress={() => changeBpm(2)} style={styles.stepBtn} hitSlop={8}><Text style={styles.stepText}>+</Text></Pressable>
           </View>
-          <Pressable style={[styles.pill, beat && styles.pillOn]} onPress={() => setBeat((b) => !b)}>
+          <Pressable style={[styles.pill, beat && styles.pillOn]} onPress={() => setBeatOn(!beat)}>
             <Text style={styles.btnText}>{beat ? 'STOP BEAT' : 'START BEAT'}</Text>
           </Pressable>
+        </View>
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.label}>BODY WEIGHT</Text>
+        <Text style={styles.hint}>Used to work out calories burned on every run (pace, distance and hills are counted too).</Text>
+        <View style={styles.stepRow}>
+          <Text style={styles.line}>My weight</Text>
+          <View style={styles.stepper}>
+            <Pressable onPress={() => changeWeight(-1)} onLongPress={() => changeWeight(-5)} style={styles.stepBtn} hitSlop={8}><Text style={styles.stepText}>−</Text></Pressable>
+            <Text style={styles.stepVal}>{weightKg ? `${weightKg} kg` : 'not set'}</Text>
+            <Pressable onPress={() => changeWeight(1)} onLongPress={() => changeWeight(5)} style={styles.stepBtn} hitSlop={8}><Text style={styles.stepText}>+</Text></Pressable>
+          </View>
         </View>
       </View>
       <View style={styles.card}>

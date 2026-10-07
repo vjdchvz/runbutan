@@ -145,12 +145,14 @@ export const advance = (st: CoachState, w: Workout, inp: Input): Cue[] => {
     const range = targetRange(s, inp.paces);
     const lastSeconds = timed && m.remaining <= 10;
     if (range && inp.paceSecKm && m.done >= 33 && !lastSeconds && inp.activeSec - st.lastPaceCue >= 25) {
+      const per = inp.unit === 'mi' ? 'per mile' : 'per kilometer';
+      const now = `You're at ${spokenPace(inp.paceSecKm, inp.unit)}, target ${spokenPace((range[0] + range[1]) / 2, inp.unit)} ${per}.`;
       if (inp.paceSecKm > range[1] * 1.05) {
         st.lastPaceCue = inp.activeSec;
-        cues.push({ text: 'Speed up a little.' });
+        cues.push({ text: `Speed up a little. ${now}` });
       } else if (inp.paceSecKm < range[0] * 0.95) {
         st.lastPaceCue = inp.activeSec;
-        cues.push({ text: "Ease off, you're ahead of pace." });
+        cues.push({ text: `Ease off, you're ahead of pace. ${now}` });
       }
     }
     break;

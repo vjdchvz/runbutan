@@ -8,7 +8,8 @@ import { DialogOptions, useDialog } from './Dialog';
 import StoryScreen from './StoryScreen';
 import { fmtPace, fmtTime, TrackPt } from './session';
 import { runTitle } from './stats';
-import { useSettings } from './settings';
+import { getSettings, useSettings } from './settings';
+import { caloriesFor, fmtKcal } from './calories';
 import { distNum, paceLabel, unitName } from './units';
 
 const fmtDate = (t: number) => {
@@ -189,6 +190,7 @@ function RunDetail({
   const [editing, setEditing] = useState(false);
   const [story, setStory] = useState(false);
   const [title, setTitle] = useState(runTitle(run));
+  const weightKg = getSettings().weightKg;
   useEffect(() => {
     loadTrack(run.id).then(setTrack);
   }, [run.id]);
@@ -274,11 +276,10 @@ function RunDetail({
           <Stat label={`AVG ${paceLabel().toUpperCase()}`} value={fmtPace(run.avgPaceSec)} />
           <Stat label="TIME" value={fmtTime(run.elapsedSec ?? run.movingSec)} />
         </View>
-        {run.elevGainM !== undefined && (
-          <View style={styles.row}>
-            <Stat label="ELEV GAIN" value={`${Math.round(run.elevGainM)} m`} />
-          </View>
-        )}
+        <View style={styles.row}>
+          {run.elevGainM !== undefined && <Stat label="ELEV GAIN" value={`${Math.round(run.elevGainM)} m`} />}
+          <Stat label="KCAL" value={fmtKcal(caloriesFor(weightKg, run.distanceM, run.movingSec, run.elevGainM ?? 0))} />
+        </View>
 
         <View style={{ marginTop: 14 }}>
           <RouteMap points={track ?? []} height={220} emptyText={track === null ? 'Loading…' : 'No route saved for this run'} />

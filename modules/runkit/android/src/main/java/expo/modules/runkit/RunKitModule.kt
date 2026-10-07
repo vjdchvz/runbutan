@@ -15,6 +15,9 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import android.os.Environment
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.MediaStore
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -28,6 +31,14 @@ class RunKitModule : Module() {
   private val context: Context get() = requireNotNull(appContext.reactContext)
   private var focus: AudioFocusRequest? = null
   private var receiver: BroadcastReceiver? = null
+
+  private fun vibrator(): Vibrator? =
+    if (Build.VERSION.SDK_INT >= 31) {
+      (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
+    } else {
+      @Suppress("DEPRECATION")
+      context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+    }
 
   private val actionToggle get() = "${context.packageName}.action.TOGGLE"
   private val actionStop get() = "${context.packageName}.action.STOP"
@@ -87,6 +98,27 @@ class RunKitModule : Module() {
         focus?.let { am.abandonAudioFocusRequest(it) }
       }
     }
+
+    // ---- cadence beat ----
+    // One repeating waveform handed to the system vibrator: Android replays it on its own, so the beat
+    // keeps going with the screen off or the app in the background (a JS timer gets paused there).
+    // Alarm usage: the vibrator lets alarm-type vibrations continue for background apps.
+    Function("startBeat") { bpm: Int ->
+      if (Build.VERSION.SDK_INT < 26) return@Function false
+      val v = vibrator() ?: return@Function false
+      val period = (60000L / bpm.coerceIn(60, 240)).coerceAtLeast(120L)
+      val pulse = 35L
+      val effect = VibrationEffect.createWaveform(longArrayOf(0, pulse, period - pulse), 0)
+      val attrs = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_ALARM)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+        .build()
+      v.cancel()
+      v.vibrate(effect, attrs)
+      true
+    }
+
+    Function("stopBeat") { vibrator()?.cancel() }
 
     // ---- save a text file into the phone's public Downloads folder (no permission needed on Android 10+) ----
     AsyncFunction("saveToDownloads") { name: String, content: String, mime: String ->

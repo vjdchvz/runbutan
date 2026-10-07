@@ -34,6 +34,7 @@ import {
 } from './src/session';
 import { MIN_SAVE_DISTANCE_M, Run } from './src/history';
 import { loadSettings, useSettings } from './src/settings';
+import { caloriesFor, fmtKcal } from './src/calories';
 import { distNum, paceLabel, unitName } from './src/units';
 import { badgeText } from './src/efforts';
 import { migrateEfforts, migrateMovingTime } from './src/migrate';
@@ -80,7 +81,7 @@ const snapshotNow = (): { run: Run; route: TrackPt[] } => {
 };
 
 export default function App() {
-  useSettings(); // redraw everything when the unit (or any setting) changes
+  const settings = useSettings(); // redraw everything when the unit (or any setting) changes
   useEffect(() => {
     loadSettings();
   }, []);
@@ -493,7 +494,7 @@ export default function App() {
           {!coachLive && (
           <View style={styles.row}>
             <Stat label="ELEV ▲" value={`${Math.round(s.elevGainM)} m`} />
-            <Stat label="ELEV ▼" value={`${Math.round(s.elevLossM)} m`} />
+            <Stat label="KCAL" value={fmtKcal(caloriesFor(settings.weightKg, s.distanceM, s.movingSec, s.elevGainM))} />
             <Stat label="ALTITUDE" value={s.altitudeM === null ? '-- m' : `${Math.round(s.altitudeM)} m`} />
           </View>
           )}

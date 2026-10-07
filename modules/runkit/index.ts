@@ -8,6 +8,8 @@ type Native = {
   cancelRunNotification(): void;
   saveToDownloads(name: string, content: string, mime: string): Promise<string>;
   saveImageToGallery(path: string, name: string): Promise<string>;
+  startBeat(bpm: number): boolean;
+  stopBeat(): void;
   addListener(event: 'onAction', cb: (e: { action: RunAction }) => void): { remove(): void };
 };
 
@@ -55,6 +57,21 @@ export const saveToDownloads = (name: string, content: string, mime: string): Pr
 export const saveImageToGallery = (path: string, name: string): Promise<string> => {
   if (!native) return Promise.reject(new Error('Saving images is not available in this build'));
   return native.saveImageToGallery(path, name);
+};
+// Cadence beat: a vibration pattern the system repeats by itself (keeps going with the screen off).
+export const startBeat = (bpm: number) => {
+  try {
+    return native?.startBeat(Math.round(bpm)) ?? false;
+  } catch {
+    return false;
+  }
+};
+export const stopBeat = () => {
+  try {
+    native?.stopBeat();
+  } catch {
+    // ignore
+  }
 };
 export const onRunAction = (cb: (a: RunAction) => void) => {
   try {

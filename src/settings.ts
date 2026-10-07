@@ -14,6 +14,7 @@ export type Settings = {
   rate: number; // speech speed, 1 = normal
   duck: boolean; // lower the music while the coach speaks
   adaptiveCoaching: boolean; // scale the next plan session's volume from how recent sessions went — see coach/adapt.ts
+  weightKg: number | null; // body weight, for calories (null = not set)
 };
 
 export const DEFAULTS: Settings = {
@@ -28,6 +29,7 @@ export const DEFAULTS: Settings = {
   rate: 1,
   duck: true,
   adaptiveCoaching: true,
+  weightKg: null,
 };
 
 const KEY = 'runbutan.settings.v1';
