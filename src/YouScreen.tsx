@@ -185,8 +185,8 @@ function WeekChart({ weeks }: { weeks: { start: number; km: number }[] }) {
 
 const Stat = ({ label, value }: { label: string; value: string }) => (
   <View style={styles.stat}>
-    <Text style={styles.label}>{label}</Text>
-    <Text style={styles.statValue}>{value}</Text>
+    <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={1.2}>{label}</Text>
+    <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.15}>{value}</Text>
   </View>
 );
 
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
   label: { color: '#8A8A96', fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
   row: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  stat: { flex: 1 },
+  stat: { flex: 1, paddingRight: 8 },
   statValue: { color: '#fff', fontSize: 20, fontWeight: '800', marginTop: 2, fontVariant: ['tabular-nums'] },
   big: { color: '#fff', fontSize: 34, fontWeight: '900', marginTop: 4, fontVariant: ['tabular-nums'] },
   bigSub: { color: '#8A8A96', fontSize: 18, fontWeight: '700' },

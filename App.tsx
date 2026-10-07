@@ -1,6 +1,8 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { AppState, BackHandler, Image, Pressable, Switch, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { IconCoach, IconHistory, IconRun, IconSettings, IconVolume, IconYou } from './src/ui/icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -394,38 +396,39 @@ export default function App() {
   };
 
   toggleRef.current = () => void toggle();
+  const insets = useSafeAreaInsets();
   const coach = s.running ? getCoach() : null;
   const coachLive = !!coach && !coach.finished;
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingTop: insets.top + 10 }]}>
       <StatusBar style="light" />
       {dialog}
       <View style={styles.header}>
-        <View style={styles.logoBadge}>
-          <Image source={require('./assets/logo-mark.png')} style={styles.logo} resizeMode="contain" />
+        <Image source={require('./assets/logo-mark.png')} style={styles.logo} resizeMode="contain" />
+        <View style={styles.brandBox}>
+          <Text style={styles.brand} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1}>
+            <Text style={styles.brandRun}>RUN</Text>
+            <Text style={styles.brandButan}>butan</Text>
+          </Text>
+          {user && (
+            <Text style={styles.greeting} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+              Hi, {(user.displayName ?? '').split(' ')[0] || 'there'}
+            </Text>
+          )}
         </View>
-        <Text style={styles.brand}>
-          <Text style={styles.brandRun}>RUN</Text>
-          <Text style={styles.brandButan}>butan</Text>
-        </Text>
         <GpsChip />
-        <Pressable onPress={() => setTab('settings')} hitSlop={10}>
+        <Pressable onPress={() => setTab('settings')} hitSlop={10} accessibilityLabel="Settings">
           {user?.photoURL ? (
-            <Image source={{ uri: user.photoURL }} style={styles.headerAvatar} />
+            <Image source={{ uri: user.photoURL }} style={[styles.headerAvatar, tab === 'settings' && styles.headerActive]} />
           ) : (
-            <View style={styles.gear}><Text style={styles.gearText}>⚙</Text></View>
+            <View style={[styles.gear, tab === 'settings' && styles.headerActive]}>
+              <IconSettings color={tab === 'settings' ? '#FF4D2E' : '#C8C8D0'} />
+            </View>
           )}
         </Pressable>
       </View>
-      {user && <Text style={styles.greeting}>Hi, {(user.displayName ?? '').split(' ')[0] || 'there'}</Text>}
-
-      <View style={styles.tabs}>
-        <TabButton label="RUN" active={tab === 'run'} onPress={() => setTab('run')} />
-        <TabButton label="HISTORY" active={tab === 'history'} onPress={() => setTab('history')} />
-        <TabButton label="COACH" active={tab === 'coach'} onPress={() => setTab('coach')} />
-        <TabButton label="YOU" active={tab === 'you'} onPress={() => setTab('you')} />
-      </View>
+      <View style={styles.body}>
 
       {!ready ? null : tab === 'history' ? (
         <HistoryTab />
@@ -439,7 +442,10 @@ export default function App() {
         <>
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
           <View style={styles.voiceRow}>
-            <Text style={styles.voiceLabel}>{voice ? '🔊 VOICE CALL-OUTS' : '🔇 VOICE MUTED'}</Text>
+            <View style={styles.voiceLeft}>
+              <IconVolume color={voice ? '#FF4D2E' : '#55555F'} muted={!voice} />
+              <Text style={styles.voiceLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>{voice ? 'VOICE CALL-OUTS' : 'VOICE MUTED'}</Text>
+            </View>
             {voice && (
               <Pressable onPress={speakTest} hitSlop={10} style={styles.testBtn}>
                 <Text style={styles.testText}>▶ TEST</Text>
@@ -484,7 +490,14 @@ export default function App() {
           )}
 
           <Text style={[styles.label, s.paused && styles.paused]}>{s.paused ? '⏸ PAUSED' : `PACE ${paceLabel().toUpperCase()}`}</Text>
-          <Text style={[styles.hero, coachLive && { fontSize: 56 }]}>{fmtPace(s.currentPaceSec)}</Text>
+          <Text
+            style={[styles.hero, coachLive && { fontSize: 56 }, s.currentPaceSec === null && styles.heroEmpty]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            maxFontSizeMultiplier={1}
+          >
+            {s.currentPaceSec === null ? '0:00' : fmtPace(s.currentPaceSec)}
+          </Text>
 
           <View style={styles.row}>
             <Stat label={`AVG ${paceLabel().toUpperCase()}`} value={fmtPace(s.avgPaceSec)} />
@@ -535,6 +548,13 @@ export default function App() {
           </View>
         </>
       )}
+      </View>
+      <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+        <TabButton label="Run" Icon={IconRun} active={tab === 'run'} onPress={() => setTab('run')} />
+        <TabButton label="History" Icon={IconHistory} active={tab === 'history'} onPress={() => setTab('history')} />
+        <TabButton label="Coach" Icon={IconCoach} active={tab === 'coach'} onPress={() => setTab('coach')} />
+        <TabButton label="You" Icon={IconYou} active={tab === 'you'} onPress={() => setTab('you')} />
+      </View>
     </View>
   );
 }
@@ -567,34 +587,40 @@ const GpsChip = () => {
   );
 };
 
-const TabButton = ({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) => (
-  <Pressable style={[styles.tab, active && styles.tabActive]} onPress={onPress}>
-    <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+type TabIcon = (p: { color: string; size?: number; strokeWidth?: number }) => ReactElement;
+const TabButton = ({ label, Icon, active, onPress }: { label: string; Icon: TabIcon; active: boolean; onPress: () => void }) => (
+  <Pressable style={styles.tab} onPress={onPress} accessibilityRole="tab" accessibilityState={{ selected: active }}>
+    <View style={[styles.tabPill, active && styles.tabPillActive]}>
+      <Icon color={active ? '#FF4D2E' : '#6E6E7A'} size={22} strokeWidth={active ? 2.4 : 2} />
+    </View>
+    <Text style={[styles.tabText, active && styles.tabTextActive]} numberOfLines={1} maxFontSizeMultiplier={1.15}>{label}</Text>
   </Pressable>
 );
 
 const Stat = ({ label, value }: { label: string; value: string }) => (
   <View style={styles.stat}>
-    <Text style={styles.label}>{label}</Text>
-    <Text style={styles.statValue}>{value}</Text>
+    <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={1.2}>{label}</Text>
+    <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.15}>{value}</Text>
   </View>
 );
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0B0B0F', paddingTop: 64, paddingHorizontal: 20, paddingBottom: 32 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  logoBadge: { paddingHorizontal: 6, paddingVertical: 4 },
-  logo: { width: 56, height: 38 },
-  brand: { fontSize: 24, letterSpacing: 1 },
+  root: { flex: 1, backgroundColor: '#0B0B0F' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingBottom: 10 },
+  body: { flex: 1, paddingHorizontal: 20, paddingBottom: 12 },
+  logo: { width: 46, height: 32 },
+  brandBox: { flex: 1, minWidth: 0 },
+  brand: { fontSize: 22, letterSpacing: 0.5 },
   brandRun: { color: '#E02030', fontWeight: '900', fontStyle: 'italic' },
   brandButan: { color: '#8FC23A', fontWeight: '700' },
-  chip: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#17171F', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#17171F', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 20 },
   bar: { width: 5, borderRadius: 2 },
   chipTitle: { color: '#8A8A96', fontSize: 9, fontWeight: '800', letterSpacing: 1.5 },
   chipText: { fontSize: 12, fontWeight: '800' },
   voiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
-  voiceLabel: { color: '#8A8A96', fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
+  voiceLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
+  voiceLabel: { color: '#8A8A96', fontSize: 12, fontWeight: '800', letterSpacing: 1.5, flexShrink: 1 },
   banner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1F2A1F', borderRadius: 14, padding: 12, marginTop: 12, borderWidth: 1, borderColor: '#2E4A2E' },
   bannerLabel: { color: '#7FD67F', fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
   bannerName: { color: '#fff', fontSize: 16, fontWeight: '800', marginTop: 2 },
@@ -608,28 +634,30 @@ const styles = StyleSheet.create({
   coachFill: { height: 6, backgroundColor: '#FF4D2E' },
   coachNext: { color: '#8A8A96', fontSize: 13, fontWeight: '600', marginTop: 8 },
   coachDone: { color: '#7FD67F', fontSize: 14, fontWeight: '900' },
-  gear: { marginLeft: 10, width: 38, height: 38, borderRadius: 12, backgroundColor: '#17171F', alignItems: 'center', justifyContent: 'center' },
-  gearText: { color: '#C8C8D0', fontSize: 20 },
-  headerAvatar: { marginLeft: 10, width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: '#17171F' },
-  greeting: { color: '#8A8A96', fontSize: 13, fontWeight: '700', marginTop: 6 },
-  tabs: { flexDirection: 'row', gap: 8, marginTop: 16 },
-  tab: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: '#17171F' },
-  tabActive: { backgroundColor: '#FF4D2E' },
-  tabText: { color: '#8A8A96', fontWeight: '800', letterSpacing: 1.5, fontSize: 13 },
-  tabTextActive: { color: '#fff' },
-  label: { color: '#8A8A96', fontSize: 12, fontWeight: '700', letterSpacing: 1.5, marginTop: 24 },
-  hero: { color: '#fff', fontSize: 96, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  gear: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#17171F', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#17171F' },
+  headerAvatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: '#17171F' },
+  headerActive: { borderColor: '#FF4D2E' },
+  greeting: { color: '#8A8A96', fontSize: 12, fontWeight: '700', marginTop: 1 },
+  tabBar: { flexDirection: 'row', backgroundColor: '#111117', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2A2A35', paddingTop: 8, paddingHorizontal: 8 },
+  tab: { flex: 1, alignItems: 'center', gap: 3 },
+  tabPill: { width: 56, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  tabPillActive: { backgroundColor: 'rgba(255,77,46,0.14)' },
+  tabText: { color: '#6E6E7A', fontWeight: '700', fontSize: 11, letterSpacing: 0.3 },
+  tabTextActive: { color: '#FFFFFF' },
+  label: { color: '#8A8A96', fontSize: 12, fontWeight: '700', letterSpacing: 1.5, marginTop: 22 },
+  hero: { color: '#fff', fontSize: 96, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: -2 },
+  heroEmpty: { color: '#2E2E38' },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   stat: { flex: 1 },
-  statValue: { color: '#fff', fontSize: 28, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  statValue: { color: '#fff', fontSize: 28, fontWeight: '800', fontVariant: ['tabular-nums'], marginTop: 2 },
   map: { marginTop: 20 },
   splits: { marginTop: 16 },
   splitRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#17171F', padding: 14, borderRadius: 12 },
   splitKm: { color: '#8A8A96', fontWeight: '700', width: 70 },
   splitTime: { color: '#fff', fontWeight: '800', fontSize: 18 },
   splitTotal: { color: '#8A8A96', fontVariant: ['tabular-nums'] },
-  btn: { backgroundColor: '#FF4D2E', paddingVertical: 20, borderRadius: 16, alignItems: 'center' },
-  controls: { flexDirection: 'row', gap: 12 },
+  btn: { backgroundColor: '#FF4D2E', paddingVertical: 18, borderRadius: 16, alignItems: 'center' },
+  controls: { flexDirection: 'row', gap: 12, paddingTop: 10 },
   ctrl: { flex: 1 },
   btnPause: { backgroundColor: '#2A2A35' },
   btnResume: { backgroundColor: '#2E9E3A' },

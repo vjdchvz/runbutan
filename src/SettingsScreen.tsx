@@ -117,12 +117,12 @@ export default function SettingsScreen({ onBack, muted }: { onBack: () => void; 
         <View style={styles.chips}>
           {INTERVALS.map((o) => (
             <Pressable key={o.v} style={[styles.chip, st.announceSec === o.v && styles.chipOn]} onPress={() => updateSettings({ announceSec: o.v })}>
-              <Text style={[styles.chipText, st.announceSec === o.v && styles.chipTextOn]}>{o.label}</Text>
+              <Text style={[styles.chipText, st.announceSec === o.v && styles.chipTextOn]} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.15}>{o.label}</Text>
             </Pressable>
           ))}
         </View>
         <Text style={styles.hint}>
-          {st.announceSec === 0 ? 'Only the split call-outs will speak.' : `Pace, average and distance are read out every ${INTERVALS.find((o) => o.v === st.announceSec)?.label ?? `${st.announceSec} s`}.`} Guided workouts speak their own cues.
+          {st.announceSec === 0 ? 'Only the split call-outs will speak.' : `Pace, average and distance are read out every ${INTERVALS.find((o) => o.v === st.announceSec)?.label ?? `${st.announceSec} s`}.`} During guided workouts they play between the coach's cues.
         </Text>
       </View>
 
@@ -206,8 +206,8 @@ const styles = StyleSheet.create({
   segOn: { backgroundColor: '#FF4D2E' },
   segText: { color: '#8A8A96', fontWeight: '800' },
   segTextOn: { color: '#fff' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  chip: { backgroundColor: '#22222C', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 },
+  chips: { flexDirection: 'row', gap: 4, marginTop: 10, backgroundColor: '#22222C', borderRadius: 12, padding: 4 },
+  chip: { flex: 1, borderRadius: 9, paddingVertical: 9, alignItems: 'center' },
   chipOn: { backgroundColor: '#FF4D2E' },
   chipText: { color: '#8A8A96', fontWeight: '800', fontSize: 13 },
   chipTextOn: { color: '#fff' },

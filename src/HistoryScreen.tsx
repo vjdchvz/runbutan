@@ -310,26 +310,33 @@ function RunDetail({
         </View>
       </ScrollView>
 
-      <Pressable style={[styles.btn, !canShare && styles.btnOff]} onPress={uploadToStrava} disabled={!canShare}>
-        <Text style={styles.btnText}>UPLOAD TO STRAVA</Text>
-      </Pressable>
-      <Pressable style={[styles.btn, styles.btnAlt, !canShare && styles.btnOff]} onPress={() => setStory(true)} disabled={!canShare}>
-        <Text style={styles.btnText}>CREATE STORY IMAGE</Text>
-      </Pressable>
-      <Pressable onPress={share} disabled={!canShare} style={styles.delete}>
-        <Text style={[styles.deleteText, !canShare && { opacity: 0.4 }]}>Share the GPX file…</Text>
-      </Pressable>
-      <Pressable onPress={onDelete} style={styles.delete}>
-        <Text style={styles.deleteText}>Delete run</Text>
-      </Pressable>
+      <View style={styles.footer}>
+        <View style={styles.btnRow}>
+          <Pressable style={[styles.btn, { flex: 1.3 }, !canShare && styles.btnOff]} onPress={uploadToStrava} disabled={!canShare}>
+            <Text style={styles.btnText} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.15}>UPLOAD TO STRAVA</Text>
+          </Pressable>
+          <Pressable style={[styles.btn, styles.btnAlt, !canShare && styles.btnOff]} onPress={() => setStory(true)} disabled={!canShare}>
+            <Text style={styles.btnText} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.15}>STORY</Text>
+          </Pressable>
+        </View>
+        <View style={styles.linkRow}>
+          <Pressable onPress={share} disabled={!canShare} style={styles.link} hitSlop={6}>
+            <Text style={[styles.linkText, !canShare && { opacity: 0.4 }]} numberOfLines={1}>Share GPX file</Text>
+          </Pressable>
+          <View style={styles.linkDot} />
+          <Pressable onPress={onDelete} style={styles.link} hitSlop={6}>
+            <Text style={[styles.linkText, styles.linkDanger]} numberOfLines={1}>Delete run</Text>
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 }
 
 const Stat = ({ label, value }: { label: string; value: string }) => (
   <View style={styles.stat}>
-    <Text style={styles.label}>{label}</Text>
-    <Text style={styles.statValue}>{value}</Text>
+    <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={1.2}>{label}</Text>
+    <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.15}>{value}</Text>
   </View>
 );
 
@@ -362,10 +369,17 @@ const styles = StyleSheet.create({
   splitRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#17171F', padding: 12, borderRadius: 12 },
   splitKm: { color: '#8A8A96', fontWeight: '700', width: 110 },
   splitTime: { color: '#fff', fontWeight: '800', fontSize: 16 },
-  btn: { backgroundColor: '#FF4D2E', paddingVertical: 16, borderRadius: 14, alignItems: 'center', marginTop: 12 },
+  footer: { paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#22222B' },
+  btnRow: { flexDirection: 'row', gap: 10 },
+  btn: { flex: 1, backgroundColor: '#FF4D2E', paddingVertical: 15, paddingHorizontal: 10, borderRadius: 14, alignItems: 'center' },
   btnOff: { backgroundColor: '#3A3A46' },
-  btnAlt: { backgroundColor: '#2A2A35', marginTop: 8 },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 1.2 },
+  btnAlt: { backgroundColor: '#22222B', borderWidth: 1, borderColor: '#33333F' },
+  btnText: { color: '#fff', fontSize: 15, fontWeight: '900', letterSpacing: 1.2 },
+  linkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, paddingTop: 10 },
+  link: { paddingVertical: 4 },
+  linkText: { color: '#8A8A96', fontWeight: '700', fontSize: 13 },
+  linkDanger: { color: '#C2483A' },
+  linkDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: '#44444F' },
   delete: { alignItems: 'center', paddingVertical: 12 },
   deleteText: { color: '#8A8A96', fontWeight: '700' },
 });
