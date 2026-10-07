@@ -6,6 +6,9 @@ import { saveGpxToDownloads, shareGpx, STRAVA_UPLOAD_URL } from './gpx';
 import RouteMap from './RouteMap';
 import { DialogOptions, useDialog } from './Dialog';
 import StoryScreen from './StoryScreen';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuthState, useGoogleSignIn } from './auth';
+import { onRunsPulled, syncChangedRun, syncDeletedRun } from './sync';
 import { fmtPace, fmtTime, TrackPt } from './session';
 import { runTitle } from './stats';
 import { getSettings, useSettings } from './settings';
@@ -38,6 +41,7 @@ export default function HistoryScreen() {
   const refresh = useCallback(() => loadRuns().then(setRuns), []);
   useEffect(() => {
     refresh();
+    return onRunsPulled(refresh); // runs restored from the cloud appear right away
   }, [refresh]);
 
   useEffect(() => {
@@ -62,6 +66,7 @@ export default function HistoryScreen() {
       onConfirm: () =>
         deleteRun(r.id)
           .then(() => {
+            syncDeletedRun(r.id).catch(() => {});
             setSelected(null);
             refresh();
           })
@@ -106,6 +111,8 @@ export default function HistoryScreen() {
           </View>
         </View>
 
+        <BackupCard runCount={runs.length} />
+
         <Text style={[styles.label, { marginTop: 4 }]}>ACTIVITIES</Text>
         {runs.length === 0 && <Text style={styles.empty}>No runs yet. Go run!</Text>}
         {runs.map((r) => (
@@ -113,6 +120,45 @@ export default function HistoryScreen() {
         ))}
         {runs.length > 0 && <Text style={styles.hint}>Tap a run for details · long-press to delete</Text>}
       </ScrollView>
+    </View>
+  );
+}
+
+// Shown while signed out with runs on the phone: they are not backed up anywhere yet.
+// "Later" hides it for a week; it never shows once signed in.
+const BACKUP_SNOOZE = 'runbutan.backupCard.snoozedUntil';
+function BackupCard({ runCount }: { runCount: number }) {
+  const { user, loading } = useAuthState();
+  const { signIn, ready, pending, error } = useGoogleSignIn();
+  const [snoozed, setSnoozed] = useState(true);
+  useEffect(() => {
+    AsyncStorage.getItem(BACKUP_SNOOZE)
+      .then((v) => setSnoozed(!!v && Number(v) > Date.now()))
+      .catch(() => setSnoozed(false));
+  }, []);
+  if (loading || user || !ready || snoozed || runCount === 0) return null;
+  const later = () => {
+    setSnoozed(true);
+    AsyncStorage.setItem(BACKUP_SNOOZE, String(Date.now() + 7 * 24 * 3600 * 1000)).catch(() => {});
+  };
+  return (
+    <View style={styles.backup}>
+      <Text style={styles.backupTitle}>Your runs are only on this phone</Text>
+      <Text style={styles.backupText}>
+        Sign in to back up {runCount === 1 ? 'your run' : `all ${runCount} runs`} to your Google account. Lose or change your phone and they come
+        right back.
+      </Text>
+      {!!error && <Text style={styles.backupError}>{error}</Text>}
+      <View style={styles.backupRow}>
+        <Pressable style={[styles.backupBtn, pending && { opacity: 0.6 }]} onPress={signIn} disabled={pending}>
+          <Text style={styles.backupBtnText} numberOfLines={1} maxFontSizeMultiplier={1.15}>
+            {pending ? 'SIGNING IN…' : 'BACK UP WITH GOOGLE'}
+          </Text>
+        </Pressable>
+        <Pressable onPress={later} hitSlop={8} style={styles.backupLater}>
+          <Text style={styles.backupLaterText}>Later</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -200,7 +246,10 @@ function RunDetail({
     const t = title.trim();
     if (t === runTitle(run)) return;
     updateRun(run.id, { title: t || undefined })
-      .then(() => onRenamed(t))
+      .then(() => {
+        syncChangedRun(run.id);
+        onRenamed(t);
+      })
       .catch(() => onError("Couldn't rename the run."));
     if (!t) setTitle(runTitle({ ...run, title: undefined }));
   };
@@ -369,6 +418,15 @@ const styles = StyleSheet.create({
   splitRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#17171F', padding: 12, borderRadius: 12 },
   splitKm: { color: '#8A8A96', fontWeight: '700', width: 110 },
   splitTime: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  backup: { backgroundColor: '#17171F', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#2E2E3A', borderLeftWidth: 3, borderLeftColor: '#FF4D2E' },
+  backupTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  backupText: { color: '#A0A0AC', fontSize: 13, lineHeight: 19, marginTop: 4 },
+  backupError: { color: '#E0604F', fontSize: 12, marginTop: 6 },
+  backupRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 12 },
+  backupBtn: { flex: 1, backgroundColor: '#FF4D2E', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  backupBtnText: { color: '#fff', fontWeight: '900', fontSize: 13, letterSpacing: 1 },
+  backupLater: { paddingHorizontal: 6, paddingVertical: 8 },
+  backupLaterText: { color: '#8A8A96', fontWeight: '700' },
   footer: { paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#22222B' },
   btnRow: { flexDirection: 'row', gap: 10 },
   btn: { flex: 1, backgroundColor: '#FF4D2E', paddingVertical: 15, paddingHorizontal: 10, borderRadius: 14, alignItems: 'center' },

@@ -579,9 +579,9 @@ const GpsChip = () => {
           <View key={i} style={[styles.bar, { height: 4 + i * 4, backgroundColor: i <= bars ? color : '#3A3A46' }]} />
         ))}
       </View>
-      <View>
-        <Text style={styles.chipTitle}>GPS</Text>
-        <Text style={[styles.chipText, { color }]}>{label}</Text>
+      <View style={styles.chipBody}>
+        <Text style={styles.chipTitle} numberOfLines={1} maxFontSizeMultiplier={1}>GPS</Text>
+        <Text style={[styles.chipText, { color }]} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1}>{label}</Text>
       </View>
     </View>
   );
@@ -613,7 +613,8 @@ const styles = StyleSheet.create({
   brand: { fontSize: 22, letterSpacing: 0.5 },
   brandRun: { color: '#E02030', fontWeight: '900', fontStyle: 'italic' },
   brandButan: { color: '#8FC23A', fontWeight: '700' },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#17171F', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  chipBody: { flex: 1, minWidth: 0 },
+  chip: { width: 112, flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#17171F', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 20 },
   bar: { width: 5, borderRadius: 2 },
   chipTitle: { color: '#8A8A96', fontSize: 9, fontWeight: '800', letterSpacing: 1.5 },
@@ -634,7 +635,7 @@ const styles = StyleSheet.create({
   coachFill: { height: 6, backgroundColor: '#FF4D2E' },
   coachNext: { color: '#8A8A96', fontSize: 13, fontWeight: '600', marginTop: 8 },
   coachDone: { color: '#7FD67F', fontSize: 14, fontWeight: '900' },
-  gear: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#17171F', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#17171F' },
+  gear: { flexShrink: 0, width: 40, height: 40, borderRadius: 12, backgroundColor: '#17171F', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#17171F' },
   headerAvatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: '#17171F' },
   headerActive: { borderColor: '#FF4D2E' },
   greeting: { color: '#8A8A96', fontSize: 12, fontWeight: '700', marginTop: 1 },
