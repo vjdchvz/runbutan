@@ -51,9 +51,16 @@ keystore needs its own Android OAuth client, step 2, registered against its own 
    Credentials → OAuth client ID → Application type: **Android**, tied to package name
    `com.runbutan.app` and the SHA-1 of whichever keystore signs your build (`keystores/debug.keystore`
    for CI builds — print its SHA-1 with `keytool -list -v -keystore keystores/debug.keystore
-   -storepass android -alias androiddebugkey`). Put the resulting client ID in
-   `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` in `.env`. Until it's set, Settings shows "Google Sign-In
-   isn't set up yet" instead of a broken button — see `src/auth.ts`.
+   -storepass android -alias androiddebugkey`). The app itself never references this client ID
+   (Google Play Services matches the signed-in app to it by package name + SHA-1 automatically) —
+   it just has to exist, registered against the right fingerprint, or Play Services refuses to
+   issue a token. `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in `.env` is the one the app actually reads
+   (`src/auth.ts`, `GoogleSignin.configure`) — it's the ID-token audience, shared with Firebase.
+   Until it's set, Settings shows "Google Sign-In isn't set up yet" instead of a broken button.
+
+   Sign-in uses `@react-native-google-signin/google-signin` (the native Play Services picker), not
+   a browser redirect — Google blocks the browser-redirect flow's custom URI scheme for apps that
+   haven't verified ownership through Play Console, which isn't realistic for a sideloaded APK.
 
 ## Layout
 - `modules/runkit/` local Expo native module (Kotlin): audio ducking and the run notification with Pause / Stop

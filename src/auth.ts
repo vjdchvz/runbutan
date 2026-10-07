@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react';
-import * as WebBrowser from 'expo-web-browser';
-import { useIdTokenAuthRequest } from 'expo-auth-session/providers/google';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  GoogleSignin,
+  isErrorWithCode,
+  isSuccessResponse,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
 import {
   GoogleAuthProvider,
   onAuthStateChanged,
@@ -11,16 +15,15 @@ import {
 import { auth } from './firebase';
 import { syncNow } from './sync';
 
-// Required for the OAuth browser tab to close itself and hand control back to the app on Android.
-WebBrowser.maybeCompleteAuthSession();
-
-const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || undefined;
 const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || undefined;
-// Whether the Android-type OAuth client (package name + SHA-1, see .env) has actually been set up
-// yet. Without it, expo-auth-session's Google hook would throw on first render (it requires
-// *some* androidClientId on Android) — googleSignInReady lets the UI show a clear "not set up"
-// state instead of crashing the Settings screen.
-export const googleSignInReady = !!ANDROID_CLIENT_ID;
+// Whether Google Sign-In has been configured at all. Without a web client ID, GoogleSignin has
+// nothing to request an ID token's audience against, so googleSignInReady lets the UI show a
+// clear "not set up" state instead of the native module throwing on first sign-in attempt.
+export const googleSignInReady = !!WEB_CLIENT_ID;
+
+if (WEB_CLIENT_ID) {
+  GoogleSignin.configure({ webClientId: WEB_CLIENT_ID });
+}
 
 export type AuthState = { user: User | null; loading: boolean };
 
@@ -51,46 +54,47 @@ export const useAuthState = (): AuthState => {
 export const signOutUser = () => firebaseSignOut(auth);
 
 /**
- * The Google sign-in round trip: opens the account picker in a browser tab, then signs the
- * resulting Google ID token into Firebase. `expo-auth-session/providers/google` is flagged
- * deprecated upstream in favour of a native module (@react-native-google-signin/google-signin),
- * but it's still fully supported in this SDK and needs no extra native setup beyond the Android
- * OAuth client above — the simpler trade for a personal project without Play Store distribution.
+ * The Google sign-in round trip: opens the native Google Play Services account picker (no
+ * browser tab), then signs the resulting Google ID token into Firebase.
  *
- * On Android this is a PKCE authorization-code flow under the hood (no client secret involved);
- * the hook auto-exchanges the code for tokens and surfaces the id token at
- * `response.params.id_token` once that exchange finishes — see expo-auth-session's own
- * providers/Google.js for exactly how, since the public docs for it are the deprecated page.
+ * This replaces an earlier `expo-auth-session`-based implementation, which Google blocks for
+ * apps that haven't verified ownership through Play Console: `expo-auth-session`'s Google flow
+ * redirects back into the app via a custom URI scheme, and Google now rejects that redirect for
+ * unverified apps with "Error 400: invalid_request — Custom URI scheme is not enabled for your
+ * Android client" (an anti-phishing measure, since any app could otherwise register the same
+ * scheme and intercept the auth code). The native module below talks to Play Services directly —
+ * no redirect, no custom scheme, so the restriction doesn't apply.
  */
 export const useGoogleSignIn = () => {
-  const [request, response, promptAsync] = useIdTokenAuthRequest({
-    androidClientId: ANDROID_CLIENT_ID ?? 'not-configured',
-    webClientId: WEB_CLIENT_ID,
-  });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (response?.type !== 'success') {
-      if (response?.type === 'error') setError(response.error?.message ?? 'Sign-in was cancelled or failed.');
-      return;
-    }
-    const idToken = response.params?.id_token ?? response.authentication?.idToken;
-    if (!idToken) {
-      setError('Google did not return an ID token.');
-      return;
-    }
-    setPending(true);
+  const signIn = useCallback(async () => {
+    if (!googleSignInReady) return;
     setError(null);
-    signInWithCredential(auth, GoogleAuthProvider.credential(idToken))
-      .catch((e) => setError(e?.message ?? 'Sign-in failed.'))
-      .finally(() => setPending(false));
-  }, [response]);
+    setPending(true);
+    try {
+      await GoogleSignin.hasPlayServices();
+      const response = await GoogleSignin.signIn();
+      if (!isSuccessResponse(response)) {
+        return; // user cancelled the picker
+      }
+      const idToken = response.data.idToken;
+      if (!idToken) {
+        setError('Google did not return an ID token.');
+        return;
+      }
+      await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+    } catch (e) {
+      if (isErrorWithCode(e) && e.code === statusCodes.SIGN_IN_CANCELLED) {
+        // user cancelled, not an error
+      } else {
+        setError(e instanceof Error ? e.message : 'Sign-in failed.');
+      }
+    } finally {
+      setPending(false);
+    }
+  }, []);
 
-  return {
-    signIn: () => promptAsync(),
-    ready: googleSignInReady && !!request,
-    pending,
-    error,
-  };
+  return { signIn, ready: googleSignInReady, pending, error };
 };
