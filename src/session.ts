@@ -3,7 +3,7 @@ import { advance, CoachState, newCoach, skipStep, status as coachStatus } from '
 import type { ZonePaces } from './coach/vdot';
 import { getSettings, Unit } from './settings';
 import { distNum, paceInUnit, unitMeters, unitWord, unitWordSingular } from './units';
-import { abandonDuck, requestDuck } from '../modules/runkit';
+import { abandonDuck, requestDuck } from './audioSession';
 import { holdBeat, setBeatOn } from './beat';
 import type { Workout } from './coach/workouts';
 

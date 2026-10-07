@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import {
   GoogleSignin,
   isErrorWithCode,
@@ -19,10 +20,14 @@ const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || undefined;
 // Whether Google Sign-In has been configured at all. Without a web client ID, GoogleSignin has
 // nothing to request an ID token's audience against, so googleSignInReady lets the UI show a
 // clear "not set up" state instead of the native module throwing on first sign-in attempt.
-export const googleSignInReady = !!WEB_CLIENT_ID;
+// iOS also needs its own OAuth client (Google Cloud → Credentials → iOS, bundle id com.runbutan.app)
+// and that client's reversed id registered as a URL scheme; until it exists, iOS shows the
+// "not set up" state instead of the native module throwing on configure/sign-in.
+const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
+export const googleSignInReady = !!WEB_CLIENT_ID && (Platform.OS !== 'ios' || !!IOS_CLIENT_ID);
 
-if (WEB_CLIENT_ID) {
-  GoogleSignin.configure({ webClientId: WEB_CLIENT_ID });
+if (googleSignInReady) {
+  GoogleSignin.configure({ webClientId: WEB_CLIENT_ID, ...(IOS_CLIENT_ID ? { iosClientId: IOS_CLIENT_ID } : {}) });
 }
 
 export type AuthState = { user: User | null; loading: boolean };

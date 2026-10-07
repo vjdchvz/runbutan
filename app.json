@@ -14,7 +14,9 @@
         {
           "locationAlwaysAndWhenInUsePermission": "RUNbutan tracks your run in the background so it can call out your pace.",
           "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true
+          "isAndroidForegroundServiceEnabled": true,
+          "isIosBackgroundLocationEnabled": true,
+          "locationWhenInUsePermission": "RUNbutan uses your location to track your run, distance and pace."
         }
       ],
       "expo-status-bar",
@@ -27,8 +29,29 @@
           "backgroundColor": "#FFFFFF"
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false
+        }
+      ]
     ],
+    "ios": {
+      "bundleIdentifier": "com.runbutan.app",
+      "supportsTablet": false,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location",
+          "audio"
+        ],
+        "NSLocationWhenInUseUsageDescription": "RUNbutan uses your location to track your run, distance and pace.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "RUNbutan tracks your run in the background so it can call out your pace.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
     "android": {
       "package": "com.runbutan.app",
       "permissions": [

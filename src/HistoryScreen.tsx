@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BackHandler, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { BackHandler, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { deleteRun, loadRuns, loadTrack, Run, summarize, thumbToTrack, updateRun } from './history';
 import { badgeText, effortLabel, isEffortDistance } from './efforts';
 import { saveGpxToDownloads, shareGpx, STRAVA_UPLOAD_URL } from './gpx';
@@ -266,6 +266,21 @@ function RunDetail({
   // Strava's website can't be handed a file by an app, so: save the GPX to Downloads, then open the upload
   // page, where "Choose Files" finds it. If saving is impossible, fall back to the normal share sheet.
   const uploadToStrava = async () => {
+    // iOS has no public Downloads folder: save through the share sheet's "Save to Files", then the
+    // Strava page's "Choose Files" picks it up from Files.
+    if (Platform.OS === 'ios') {
+      onDialog({
+        title: 'Ready for Strava',
+        message: 'Tap SAVE FILE and choose "Save to Files". Then, on the Strava page, tap "Choose Files" and pick it. Log in first if Strava asks.',
+        confirmLabel: 'SAVE FILE',
+        cancelLabel: 'NOT NOW',
+        onConfirm: async () => {
+          await share();
+          Linking.openURL(STRAVA_UPLOAD_URL).catch(() => onError('Could not open the browser. Open strava.com/upload/select yourself.'));
+        },
+      });
+      return;
+    }
     try {
       const name = await saveGpxToDownloads(run, track ?? []);
       onDialog({

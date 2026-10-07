@@ -32,7 +32,11 @@ export const startTracking = async () => {
     throw new Error('RUNbutan only has approximate location. In Settings → Apps → RUNbutan → Permissions → Location, turn on "Use precise location".');
   }
   const bg = await Location.requestBackgroundPermissionsAsync();
-  if (bg.status !== 'granted') throw new Error('Allow location "All the time" so tracking survives screen-off');
+  // iOS keeps tracking with the screen locked under "While Using the App" (UIBackgroundModes
+  // location + the blue status-bar pill), so only Android needs "All the time".
+  if (bg.status !== 'granted' && Platform.OS === 'android') {
+    throw new Error('Allow location "All the time" so tracking survives screen-off');
+  }
 
   if (Platform.OS === 'android' && Platform.Version >= 33) {
     try {
@@ -46,6 +50,10 @@ export const startTracking = async () => {
     accuracy: Location.Accuracy.BestForNavigation,
     timeInterval: 1000,
     distanceInterval: 0,
+    // iOS: a fitness activity, never auto-paused, with the blue "using location" pill while locked.
+    activityType: Location.ActivityType.Fitness,
+    pausesUpdatesAutomatically: false,
+    showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: 'RUNbutan',
       notificationBody: 'Tracking your run',

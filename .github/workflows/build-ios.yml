@@ -1,0 +1,95 @@
+name: Build iOS
+
+# Manual on purpose: this repo is private, and GitHub bills macOS runner minutes at 10× the Linux
+# rate out of the same monthly quota the Android build uses. Run it from Actions → Build iOS →
+# "Run workflow" when an iOS build is actually wanted.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 75
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Expo SDK 57 / React Native 0.86 want the newest Xcode on the image, not the default one.
+      - name: Select newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Using $XC"
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ios/ is generated (and gitignored), like android/. Prebuild also runs `pod install`.
+      - name: Prebuild iOS project
+        run: npx expo prebuild --platform ios
+
+      - name: Find workspace and scheme
+        id: proj
+        run: |
+          WS=$(ls -d ios/*.xcworkspace | head -1)
+          SCHEME=$(basename "$WS" .xcworkspace)
+          echo "workspace=$WS" >> "$GITHUB_OUTPUT"
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+          echo "Workspace $WS, scheme $SCHEME"
+
+      # 1) Simulator build: runs in Xcode's iOS Simulator on any Mac, no Apple account needed.
+      - name: Build for iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild -workspace "${{ steps.proj.outputs.workspace }}" -scheme "${{ steps.proj.outputs.scheme }}" \
+            -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO | tail -40
+
+      # 2) Device build, unsigned. An iPhone only installs signed apps: re-sign this .ipa with your
+      #    own Apple ID in Sideloadly/AltStore (free, 7-day), or add signing secrets for TestFlight.
+      - name: Build for iPhone (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -workspace "${{ steps.proj.outputs.workspace }}" -scheme "${{ steps.proj.outputs.scheme }}" \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tail -40
+
+      - name: Package
+        run: |
+          SIM_APP=$(ls -d build/sim/Build/Products/Release-iphonesimulator/*.app | head -1)
+          DEV_APP=$(ls -d build/device/Build/Products/Release-iphoneos/*.app | head -1)
+          (cd "$(dirname "$SIM_APP")" && zip -qry "$GITHUB_WORKSPACE/runbutan-ios-simulator.zip" "$(basename "$SIM_APP")")
+          mkdir -p Payload && cp -R "$DEV_APP" Payload/
+          zip -qry runbutan-ios-unsigned.ipa Payload
+          ls -la runbutan-ios-*
+
+      # Its own release tag: the Android workflow clears every asset on "latest" each run.
+      - name: Delete stale assets on the "latest-ios" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view latest-ios --repo "${{ github.repository }}" --json assets \
+            --jq '.assets[].name' 2>/dev/null | while read -r f; do
+            gh release delete-asset latest-ios "$f" --repo "${{ github.repository }}" --yes
+          done || true
+
+      - name: Publish/update the "latest-ios" GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-ios
+          name: RUNbutan iOS (latest build)
+          body: |
+            iOS build from `${{ github.sha }}` on `${{ github.ref_name }}`.
+
+            - **runbutan-ios-simulator.zip**: unzip and drag RUNbutan.app onto a running iOS Simulator (Xcode), no Apple account needed.
+            - **runbutan-ios-unsigned.ipa**: for a real iPhone. iOS only installs signed apps, so open it in Sideloadly or AltStore and sign it with your Apple ID (free accounts: re-sign every 7 days).
+          make_latest: false
+          files: |
+            runbutan-ios-simulator.zip
+            runbutan-ios-unsigned.ipa

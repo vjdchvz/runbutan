@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { setBeatBpm, setBeatOn, useBeat } from './beat';
+import { beatWorksInBackground, setBeatBpm, setBeatOn, useBeat } from './beat';
 import { loadRuns, Run } from './history';
 import { effortLabel } from './efforts';
 import { fmtTime } from './session';
@@ -363,7 +363,7 @@ export default function CoachScreen({ running, onStartWorkout }: Props) {
       <Text style={styles.section}>TOOLS</Text>
       <View style={styles.card}>
         <Text style={styles.label}>CADENCE BEAT</Text>
-        <Text style={styles.hint}>A gentle vibration on every step, to keep a steady stride (about 170–180 is common). Keeps going with the screen off; pauses with your run.</Text>
+        <Text style={styles.hint}>A gentle vibration on every step, to keep a steady stride (about 170–180 is common). {beatWorksInBackground ? 'Keeps going with the screen off; pauses with your run.' : 'Works while the app is on screen; pauses with your run.'}</Text>
         <View style={styles.stepRow}>
           <View style={styles.stepper}>
             <Pressable onPress={() => changeBpm(-2)} style={styles.stepBtn} hitSlop={8}><Text style={styles.stepText}>−</Text></Pressable>

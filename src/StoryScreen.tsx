@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BackHandler, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { BackHandler, Image, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { saveImageToGallery } from '../modules/runkit';
@@ -66,6 +66,8 @@ export default function StoryScreen({ run, track, onBack, onDialog }: { run: Run
   };
 
   const save = async () => {
+    // iOS: the share sheet's "Save Image" puts it straight into Photos (no extra permission needed).
+    if (Platform.OS === 'ios') return share();
     setBusy(true);
     try {
       const uri = await render();
@@ -157,7 +159,7 @@ export default function StoryScreen({ run, track, onBack, onDialog }: { run: Run
           <Text style={styles.btnText}>SHARE</Text>
         </Pressable>
         <Pressable style={[styles.btn, styles.btn2, disabled && styles.btnOff]} onPress={save} disabled={disabled}>
-          <Text style={styles.btnText}>SAVE TO GALLERY</Text>
+          <Text style={styles.btnText}>{Platform.OS === 'ios' ? 'SAVE TO PHOTOS' : 'SAVE TO GALLERY'}</Text>
         </Pressable>
       </View>
     </View>

@@ -37,6 +37,7 @@ import {
 import { MIN_SAVE_DISTANCE_M, Run } from './src/history';
 import { loadSettings, useSettings } from './src/settings';
 import { caloriesFor, fmtKcal } from './src/calories';
+import { initAudioSession } from './src/audioSession';
 import { distNum, paceLabel, unitName } from './src/units';
 import { badgeText } from './src/efforts';
 import { migrateEfforts, migrateMovingTime } from './src/migrate';
@@ -98,6 +99,7 @@ export default function App() {
   const [voice, setVoice] = useState(true);
   useEffect(() => {
     initVoice();
+    initAudioSession();
   }, []);
   const [idleFix, setIdleFix] = useState<TrackPt | null>(null); // where you are before START
   useEffect(() => subscribe(setS), []);
