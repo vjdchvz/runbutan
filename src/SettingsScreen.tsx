@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import * as Speech from 'expo-speech';
 import { speakTest } from './session';
 import { getSettings, Settings, updateSettings, useSettings } from './settings';
+import { googleSignInReady, signOutUser, useAuthState, useGoogleSignIn } from './auth';
+import { syncNow } from './sync';
 
 const INTERVALS = [
   { label: 'Off', v: 0 },
@@ -23,6 +25,15 @@ const nice = (v: V, n: number) => {
 
 export default function SettingsScreen({ onBack, muted }: { onBack: () => void; muted: boolean }) {
   const st = useSettings();
+  const { user, loading } = useAuthState();
+  const google = useGoogleSignIn();
+  const [syncing, setSyncing] = useState(false);
+  const manualSync = () => {
+    setSyncing(true);
+    syncNow()
+      .catch(() => {})
+      .finally(() => setSyncing(false));
+  };
   const [voices, setVoices] = useState<V[]>([]);
   useEffect(() => {
     Speech.getAvailableVoicesAsync()
@@ -48,6 +59,46 @@ export default function SettingsScreen({ onBack, muted }: { onBack: () => void; 
     <ScrollView style={styles.root} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14, paddingBottom: 16 }}>
       <Pressable onPress={onBack} hitSlop={12}><Text style={styles.back}>‹ BACK</Text></Pressable>
       <Text style={styles.title}>Settings</Text>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>ACCOUNT</Text>
+        {loading ? (
+          <ActivityIndicator color="#FF4D2E" style={{ marginTop: 12 }} />
+        ) : user ? (
+          <>
+            <View style={styles.account}>
+              {user.photoURL ? (
+                <Image source={{ uri: user.photoURL }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarFallback]}>
+                  <Text style={styles.avatarInitial}>{(user.displayName ?? user.email ?? '?')[0].toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.line}>{user.displayName ?? 'Signed in'}</Text>
+                <Text style={styles.hint}>{user.email}</Text>
+              </View>
+            </View>
+            <Pressable style={styles.test} onPress={manualSync} disabled={syncing}>
+              {syncing ? <ActivityIndicator color="#fff" /> : <Text style={styles.testText}>☁ SYNC NOW</Text>}
+            </Pressable>
+            <Text style={styles.hint}>Your run history backs up here automatically and is available if you sign in on another device.</Text>
+            <Pressable onPress={() => signOutUser()} style={{ alignItems: 'center', paddingTop: 12 }}>
+              <Text style={styles.signOut}>Sign out</Text>
+            </Pressable>
+          </>
+        ) : !googleSignInReady ? (
+          <Text style={styles.hint}>Google Sign-In isn't set up yet.</Text>
+        ) : (
+          <>
+            <Pressable style={styles.test} onPress={google.signIn} disabled={!google.ready || google.pending}>
+              {google.pending ? <ActivityIndicator color="#fff" /> : <Text style={styles.testText}>SIGN IN WITH GOOGLE</Text>}
+            </Pressable>
+            <Text style={styles.hint}>Backs up your run history to your Google account and makes it this app's, personalized to you.</Text>
+            {google.error && <Text style={styles.warn}>{google.error}</Text>}
+          </>
+        )}
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.label}>UNITS</Text>
@@ -124,6 +175,16 @@ export default function SettingsScreen({ onBack, muted }: { onBack: () => void; 
       </View>
 
       <View style={styles.card}>
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={styles.line}>Adaptive coaching</Text>
+            <Text style={styles.hint}>Your next plan session is eased or pushed a little based on how your last few sessions actually went. Off keeps every session exactly as written.</Text>
+          </View>
+          <Switch value={st.adaptiveCoaching} onValueChange={() => toggle('adaptiveCoaching')} trackColor={{ false: '#3A3A46', true: '#FF4D2E' }} thumbColor="#fff" />
+        </View>
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.label}>LOCK SCREEN</Text>
         <Text style={styles.hint}>While you run, the notification shows time, distance and pace with Pause and Stop buttons. Press Stop twice to finish, so a stray tap in your pocket can not end the run. If you do not see it, allow notifications for RUNbutan in your phone settings.</Text>
       </View>
@@ -160,4 +221,9 @@ const styles = StyleSheet.create({
   voiceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 12, borderRadius: 10, marginTop: 6, backgroundColor: '#1D1D26' },
   voiceOn: { borderWidth: 1, borderColor: '#FF4D2E' },
   tick: { color: '#FF4D2E', fontWeight: '900', fontSize: 16 },
+  account: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10, marginBottom: 12 },
+  avatar: { width: 48, height: 48, borderRadius: 24 },
+  avatarFallback: { backgroundColor: '#FF4D2E', alignItems: 'center', justifyContent: 'center' },
+  avatarInitial: { color: '#fff', fontWeight: '900', fontSize: 20 },
+  signOut: { color: '#8A8A96', fontWeight: '700' },
 });

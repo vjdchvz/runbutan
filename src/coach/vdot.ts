@@ -44,4 +44,5 @@ export const RACES: { label: string; m: number }[] = [
   { label: '10 km', m: 10000 },
   { label: 'Half marathon', m: 21097 },
   { label: 'Marathon', m: 42195 },
+  { label: '50 km', m: 50000 },
 ];

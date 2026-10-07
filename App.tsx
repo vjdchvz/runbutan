@@ -36,7 +36,7 @@ import { MIN_SAVE_DISTANCE_M, Run } from './src/history';
 import { loadSettings, useSettings } from './src/settings';
 import { distNum, paceLabel, unitName } from './src/units';
 import { badgeText } from './src/efforts';
-import { migrateEfforts, migratePace, migrateSplits } from './src/migrate';
+import { migrateEfforts, migrateMovingTime } from './src/migrate';
 import { clearSnapshot, loadSnapshot, persistRun, saveSnapshot } from './src/inprogress';
 import { SEED_DEMO, seedDemo } from './src/seed';
 import YouScreen from './src/YouScreen';
@@ -44,11 +44,13 @@ import CoachScreen, { PlanCtx } from './src/CoachScreen';
 import SettingsScreen from './src/SettingsScreen';
 import { cancelRunNotification, onRunAction, showRunNotification } from './modules/runkit';
 import { markSessionDone } from './src/coach/store';
+import { recordOutcome } from './src/coach/adapt';
 import { paceFmt, planById, planSessions, stepAmount, stepName, Workout } from './src/coach/workouts';
 import type { ZonePaces } from './src/coach/vdot';
 import HistoryScreen from './src/HistoryScreen';
 import { useDialog } from './src/Dialog';
 import RouteMap from './src/RouteMap';
+import { useAuthState } from './src/auth';
 
 type Tab = 'run' | 'history' | 'coach' | 'you' | 'settings';
 type Armed = { w: Workout; ctx: PlanCtx | null; paces: ZonePaces | null };
@@ -83,6 +85,7 @@ export default function App() {
     loadSettings();
   }, []);
   const [s, setS] = useState<Stats>(getStats());
+  const { user } = useAuthState();
   const [tab, setTab] = useState<Tab>('run');
   const { dialog, showDialog } = useDialog();
   const [ready, setReady] = useState(!SEED_DEMO); // demo seeding (test builds only) must finish before screens load
@@ -195,7 +198,13 @@ export default function App() {
 
   // Recalculate older runs' best efforts in the background, a few seconds after launch.
   useEffect(() => {
-    const id = setTimeout(() => migrateEfforts().then(migratePace).then(migrateSplits).catch(() => {}), 4000);
+    const id = setTimeout(() => migrateEfforts().catch(() => {}), 4000);
+    return () => clearTimeout(id);
+  }, []);
+
+  // One-time: bring older runs' moving time/pace/splits in line with Strava (see movingStats.ts).
+  useEffect(() => {
+    const id = setTimeout(() => migrateMovingTime().catch(() => {}), 4000);
     return () => clearTimeout(id);
   }, []);
 
@@ -318,6 +327,20 @@ export default function App() {
       const lines = [...badges].sort((a, b) => a.rank - b.rank || b.d - a.d).map(badgeText);
       const result = getCoachResult();
       const ctx = armedRef.current?.ctx ?? null;
+      if (ctx && armedRef.current) {
+        // Adaptive coaching's input (coach/adapt.ts): how this attempt compared to its own target —
+        // armedRef.current.w is whatever was actually started, already adapted if it was. Skipped
+        // for the short-run/discarded path above: a near-zero-distance attempt there is a GPS
+        // failure, not real training signal, and would only pollute the next adaptation.
+        recordOutcome(
+          ctx.planId,
+          ctx.sessionId,
+          armedRef.current.w,
+          { movingSec: saved.movingSec, distanceM: saved.distanceM, avgPaceSec: saved.avgPaceSec },
+          result.finished,
+          armedRef.current.paces?.easy ?? null,
+        ).catch(() => {});
+      }
       if (result.finished && ctx) {
         const prog = await markSessionDone(ctx.planId, ctx.sessionId);
         const plan = planById(ctx.planId);
@@ -386,8 +409,15 @@ export default function App() {
           <Text style={styles.brandButan}>butan</Text>
         </Text>
         <GpsChip />
-        <Pressable onPress={() => setTab('settings')} hitSlop={10} style={styles.gear}><Text style={styles.gearText}>⚙</Text></Pressable>
+        <Pressable onPress={() => setTab('settings')} hitSlop={10}>
+          {user?.photoURL ? (
+            <Image source={{ uri: user.photoURL }} style={styles.headerAvatar} />
+          ) : (
+            <View style={styles.gear}><Text style={styles.gearText}>⚙</Text></View>
+          )}
+        </Pressable>
       </View>
+      {user && <Text style={styles.greeting}>Hi, {(user.displayName ?? '').split(' ')[0] || 'there'}</Text>}
 
       <View style={styles.tabs}>
         <TabButton label="RUN" active={tab === 'run'} onPress={() => setTab('run')} />
@@ -552,8 +582,8 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0B0B0F', paddingTop: 64, paddingHorizontal: 20, paddingBottom: 32 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  logoBadge: { justifyContent: 'center' }, // no background: the mascot sits straight on the dark header
-  logo: { width: 66, height: 44 },
+  logoBadge: { paddingHorizontal: 6, paddingVertical: 4 },
+  logo: { width: 56, height: 38 },
   brand: { fontSize: 24, letterSpacing: 1 },
   brandRun: { color: '#E02030', fontWeight: '900', fontStyle: 'italic' },
   brandButan: { color: '#8FC23A', fontWeight: '700' },
@@ -579,6 +609,8 @@ const styles = StyleSheet.create({
   coachDone: { color: '#7FD67F', fontSize: 14, fontWeight: '900' },
   gear: { marginLeft: 10, width: 38, height: 38, borderRadius: 12, backgroundColor: '#17171F', alignItems: 'center', justifyContent: 'center' },
   gearText: { color: '#C8C8D0', fontSize: 20 },
+  headerAvatar: { marginLeft: 10, width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: '#17171F' },
+  greeting: { color: '#8A8A96', fontSize: 13, fontWeight: '700', marginTop: 6 },
   tabs: { flexDirection: 'row', gap: 8, marginTop: 16 },
   tab: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: '#17171F' },
   tabActive: { backgroundColor: '#FF4D2E' },

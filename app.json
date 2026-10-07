@@ -3,6 +3,7 @@
     "name": "RUNbutan",
     "slug": "runbutan",
     "version": "1.0.0",
+    "scheme": "runbutan",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",

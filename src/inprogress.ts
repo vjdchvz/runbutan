@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { badgesFor, bestEfforts } from './efforts';
 import { loadRuns, saveRun, Run } from './history';
-import { computeSplits, stravaMovingSec } from './gpxClean';
-import { M_PER_MI } from './units';
+import { computeMovingStats } from './movingStats';
+import { syncNow } from './sync';
 import type { TrackPt } from './session';
 
 // A copy of the run being recorded, written every few seconds and again right before saving.
@@ -24,17 +24,19 @@ export const loadSnapshot = async (): Promise<Snapshot | null> => {
 };
 
 // Efforts + record badges, then store the run. Used for a normal STOP and for recovery.
+//
+// movingSec/avgPaceSec/splits are recomputed here from the saved route rather than trusted from
+// `base` (the live session's running estimate) — see movingStats.ts for why that estimate can
+// drift from what Strava reports for the same run.
 export const persistRun = async (base: Run, route: TrackPt[], force = false) => {
   const efforts = bestEfforts(route);
   const badges = badgesFor(efforts, await loadRuns());
-  // Pace and splits from the exported (cleaned) route, so History matches what Strava will show for the same
-  // run, and the splits always add up to the same moving time as the saved average pace.
-  const mv = stravaMovingSec(route);
-  const fixed: Partial<Run> =
-    mv !== null && mv > 0 && base.distanceM > 10 ? { movingSec: mv, avgPaceSec: mv / (base.distanceM / 1000) } : {};
-  const splitMeters = base.splitUnit === 'mi' ? M_PER_MI : 1000;
-  const splits = route.length > 1 ? computeSplits(route, splitMeters) : base.splits;
-  const run: Run = { ...base, ...fixed, splits, efforts, badges };
+  const splitM = base.splitUnit === 'mi' ? 1609.344 : 1000;
+  const moving = route.length > 1 ? computeMovingStats(route, base.distanceM, splitM) : null;
+  const run: Run = { ...base, ...moving, efforts, badges };
   await saveRun(run, route, force);
+  // Best-effort, offline-safe: syncNow() itself no-ops when signed out, and a failed upload here
+  // just leaves that run for the next sync to pick up (the save above already succeeded locally).
+  syncNow().catch(() => {});
   return run;
 };

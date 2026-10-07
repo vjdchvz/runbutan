@@ -1,0 +1,73 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prebuild Android project
+        run: npx expo prebuild --platform android
+
+      # android/ is regenerated (and gitignored) on every build, so the keystore
+      # inside it would differ run to run. keystores/debug.keystore is the one
+      # fixed keystore every CI build signs with, so each release can upgrade
+      # the last — see keystores/README.md.
+      - name: Install CI signing keystore
+        run: cp keystores/debug.keystore android/app/debug.keystore
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a
+
+      # A fixed filename (no commit sha) on purpose: softprops/action-gh-release replaces an
+      # existing same-named asset on the release rather than adding a new one. A sha-suffixed
+      # name let 7 differently-named APKs pile up under the one "latest" release before this was
+      # noticed — anyone who'd clicked an old link, or an old cached listing, could silently get
+      # a build from days earlier. The commit it was built from is still in the release body below.
+      - name: Rename APK
+        id: apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk runbutan-latest.apk
+
+      # Unconditional, every run: belt-and-suspenders against the exact bug this fixes. With a
+      # fixed filename this is normally a same-name replace and there's nothing to delete, but if
+      # the filename or release tooling ever changes again, this stops old assets from silently
+      # accumulating a second time.
+      - name: Delete any stale assets already on the "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view latest --repo "${{ github.repository }}" --json assets \
+            --jq '.assets[].name' 2>/dev/null | while read -r f; do
+            gh release delete-asset latest "$f" --repo "${{ github.repository }}" --yes
+          done || true
+
+      - name: Publish/update the "latest" GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: RUNbutan (latest build)
+          body: |
+            Automatic build from `${{ github.sha }}` on `main`.
+            Install: download the APK below, allow "install unknown apps" for your browser/file manager, then open it.
+          make_latest: true
+          files: runbutan-latest.apk

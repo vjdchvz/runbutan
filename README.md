@@ -7,11 +7,13 @@ A free, offline-first Android running app with a voice coach. Built with Expo / 
 - **Voice**: call-outs every 30 s (pace, average, distance) and at every km; mute switch.
 - **Maps**: your route on a metre grid with no signal; OpenStreetMap tiles drawn underneath when online (cached).
 - **History and stats**: activity cards with route thumbnails, weekly goal, 12-week chart, streak, month calendar and recap, best efforts (400 m to marathon) with record badges, GPX share (e.g. to Strava).
-- **Coach tab**: Couch to 5K, 5K to 10K and 5K Speed plans; quick workouts (intervals, tempo, fartlek, pyramid, goal runs) led by voice; pace zones and race predictions from your best effort (VDOT); guided warm-up, stretch and strength routines; cadence beat; heart-rate zones.
+- **Coach tab**: pick a training plan for any distance from Couch to 5K up through Marathon to Ultra — Couch to 5K, 5K to 10K, 10K to Half Marathon, Half to Marathon, Marathon to Ultra, and 5K Speed; quick workouts (intervals, tempo, fartlek, pyramid, goal runs) led by voice; pace zones and race predictions (5K to 50K) from your best effort (VDOT); guided warm-up, stretch and strength routines; cadence beat; heart-rate zones.
+- **Adaptive coaching** (Settings, on by default): each plan's next session eases or pushes a little — up to ±15% volume — based on how your last few sessions actually went (finished in full? on pace? or a struggle?), not just a fixed script. Only the next undone session ever changes; every other week stays exactly as authored until it's actually reached. See `src/coach/adapt.ts`.
 - **Settings**: km or miles, how often the voice speaks, which numbers it reads, voice and speed, lower-the-music while speaking.
 - **Lock-screen controls**: the run notification shows time, distance and pace with Pause and Stop (Stop needs two presses within 6 s).
 - **Pace accuracy**: current pace and distance use the phone's own GPS (Doppler) speed, falling back to jitter-filtered positions on phones that do not report it.
 - **Strava upload**: "Upload to Strava" saves a smoothed GPX to Downloads and opens strava.com/upload/select (a website cannot be handed a file, so you pick it with Choose Files). Smoothing removes GPS jitter so Strava's distance matches the app's.
+- **Google sign-in + backup** (Settings → Account): signs in with your Google account (Firebase Auth) and backs up your run history to Firestore, so it survives a reinstall or shows up again if you sign in on another device. Entirely optional — everything above works fully offline and signed out, exactly as before; see "Cloud sync setup" below.
 - **Moving time** follows Strava's rule: faster than about 0.89 m/s counts as moving, and slower stretches only count as rest after 15 s.
 - **Safety**: run history stored one key per run, unfinished-run recovery, explains runs that could not be saved.
 
@@ -36,10 +38,37 @@ On first start choose location **Allow all the time** and **Precise**.
 - `src/seed.ts` has `SEED_DEMO`. Keep it `false`; `true` loads fake demo runs for screenshots.
 - Map tiles come from OpenStreetMap (© OpenStreetMap contributors) under its tile usage policy.
 
+## Cloud sync setup
+Google sign-in + Firestore backup (Settings → Account) needs two things set up once, outside the
+repo, in the Firebase project behind the config in `.env`. Both are done for the current
+`keystores/debug.keystore` — this section is reference for if that keystore ever changes (a new
+keystore needs its own Android OAuth client, step 2, registered against its own SHA-1):
+
+1. **Firestore Security Rules** — paste `firestore.rules` into Firebase Console → Firestore
+   Database → Rules → Publish. Without this, Firestore's default rules either deny everything
+   (sign-in works, sync silently fails) or, worse, allow anyone to read/write anyone's runs.
+2. **An Android OAuth client** — Google Cloud Console → APIs & Services → Credentials → Create
+   Credentials → OAuth client ID → Application type: **Android**, tied to package name
+   `com.runbutan.app` and the SHA-1 of whichever keystore signs your build (`keystores/debug.keystore`
+   for CI builds — print its SHA-1 with `keytool -list -v -keystore keystores/debug.keystore
+   -storepass android -alias androiddebugkey`). The app itself never references this client ID
+   (Google Play Services matches the signed-in app to it by package name + SHA-1 automatically) —
+   it just has to exist, registered against the right fingerprint, or Play Services refuses to
+   issue a token. `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in `.env` is the one the app actually reads
+   (`src/auth.ts`, `GoogleSignin.configure`) — it's the ID-token audience, shared with Firebase.
+   Until it's set, Settings shows "Google Sign-In isn't set up yet" instead of a broken button.
+
+   Sign-in uses `@react-native-google-signin/google-signin` (the native Play Services picker), not
+   a browser redirect — Google blocks the browser-redirect flow's custom URI scheme for apps that
+   haven't verified ownership through Play Console, which isn't realistic for a sideloaded APK.
+
 ## Layout
 - `modules/runkit/` local Expo native module (Kotlin): audio ducking and the run notification with Pause / Stop
 - `src/session.ts` live run state (GPS fixes, pace, splits, pause, coaching hook)
 - `src/coach/` workouts, plans, voice-coaching engine, VDOT pace model, routines
 - `src/history.ts`, `src/inprogress.ts` storage and crash recovery
+- `src/movingStats.ts`, `src/migrate.ts` moving-time/pace recomputed from the cleaned route at save time (matches Strava), plus the one-time migration for older runs
+- `src/firebase.ts`, `src/auth.ts`, `src/sync.ts` Google sign-in and Firestore backup
 - `src/settings.ts`, `src/units.ts` user settings and km/mi formatting
 - `src/*Screen.tsx` screens
+- `promo/` a separate Remotion project (own `package.json`) rendering a feature-tour demo video — see `promo/README.md`

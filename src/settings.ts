@@ -13,6 +13,7 @@ export type Settings = {
   voiceId: string | null; // null = automatic (first English voice)
   rate: number; // speech speed, 1 = normal
   duck: boolean; // lower the music while the coach speaks
+  adaptiveCoaching: boolean; // scale the next plan session's volume from how recent sessions went — see coach/adapt.ts
 };
 
 export const DEFAULTS: Settings = {
@@ -26,6 +27,7 @@ export const DEFAULTS: Settings = {
   voiceId: null,
   rate: 1,
   duck: true,
+  adaptiveCoaching: true,
 };
 
 const KEY = 'runbutan.settings.v1';
