@@ -138,6 +138,29 @@ class RunKitModule : Module() {
       saved ?: throw IllegalStateException("Could not find a free file name in Downloads")
     }
 
+    // ---- copy an image file into the phone's gallery (Pictures/RUNbutan), no permission needed on Android 10+ ----
+    AsyncFunction("saveImageToGallery") { path: String, name: String ->
+      if (Build.VERSION.SDK_INT < 29) throw IllegalStateException("Saving to the gallery needs Android 10 or newer")
+      val file = java.io.File(path.removePrefix("file://"))
+      if (!file.exists()) throw IllegalStateException("The image file was not found")
+      val resolver = context.contentResolver
+      val values = ContentValues().apply {
+        put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+        put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/RUNbutan")
+      }
+      val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        ?: throw IllegalStateException("Could not create the image in the gallery")
+      try {
+        resolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }
+          ?: throw IllegalStateException("Could not open the image for writing")
+      } catch (e: Exception) {
+        runCatching { resolver.delete(uri, null, null) }
+        throw e
+      }
+      name
+    }
+
     Function("cancelRunNotification") { cancelOurs() }
 
     // ---- run notification (replaces the plain "tracking" one the location service posts) ----

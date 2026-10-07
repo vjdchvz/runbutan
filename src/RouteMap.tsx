@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, ImageStyle, LayoutChangeEvent, StyleProp, StyleSheet, Text, View } from 'react-native';
 import { Directory, File, Paths } from 'expo-file-system';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
@@ -24,7 +24,7 @@ const worldY = (lat: number) => {
 // RN's <Image> ignores a custom User-Agent (OSM then serves a 403 "blocked" tile), so tiles are
 // downloaded once through expo-file-system with our headers and kept in the cache dir
 // (policy: cache tiles; only fetch what is viewed). Cached tiles also work with no signal.
-function Tile({ z, x, y, style, onOk }: { z: number; x: number; y: number; style: StyleProp<ImageStyle>; onOk: () => void }) {
+function Tile({ z, x, y, style, onOk, onDone }: { z: number; x: number; y: number; style: StyleProp<ImageStyle>; onOk: () => void; onDone?: (ok: boolean) => void }) {
   const [uri, setUri] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
@@ -38,15 +38,17 @@ function Tile({ z, x, y, style, onOk }: { z: number; x: number; y: number; style
         if (alive) {
           setUri(file.uri);
           onOk();
+          onDone?.(true);
         }
       } catch {
         // offline / blocked: leave the tile empty, the metre grid stays visible
+        if (alive) onDone?.(false);
       }
     })();
     return () => {
       alive = false;
     };
-  }, [z, x, y, onOk]);
+  }, [z, x, y, onOk, onDone]);
   const dropBad = () => {
     // a cached file that can't be drawn would otherwise stay broken forever: delete it so it re-downloads
     try {
@@ -69,14 +71,31 @@ const range = (a: number[]): [number, number] => {
   return [lo, hi];
 };
 
-type Props = { points: TrackPt[]; height?: number; emptyText?: string; plain?: boolean; follow?: boolean };
+type Props = {
+  points: TrackPt[];
+  height?: number;
+  emptyText?: string;
+  plain?: boolean;
+  follow?: boolean;
+  onSettled?: (loaded: number, total: number) => void; // every map tile has either loaded or failed
+};
 
 const FOLLOW_SPAN_M = 110; // follow mode: the map is always about this many metres wide, centred on you
 
-export default function RouteMap({ points, height = 240, emptyText = 'Waiting for GPS…', plain = false, follow = false }: Props) {
+export default function RouteMap({ points, height = 240, emptyText = 'Waiting for GPS…', plain = false, follow = false, onSettled }: Props) {
   const [w, setW] = useState(0);
   const [tilesOk, setTilesOk] = useState(false);
   const markOk = useCallback(() => setTilesOk(true), []);
+  // Tile bookkeeping: tell the caller when all tiles have finished (loaded or failed).
+  const settle = useRef({ key: '', total: 0, ok: 0, done: 0 });
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
+  const onDone = useCallback((ok: boolean) => {
+    const s = settle.current;
+    s.done += 1;
+    if (ok) s.ok += 1;
+    if (s.total > 0 && s.done >= s.total) onSettledRef.current?.(s.ok, s.total);
+  }, []);
   const onLayout = (e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width);
 
   const content = (() => {
@@ -119,6 +138,9 @@ export default function RouteMap({ points, height = 240, emptyText = 'Waiting fo
       }
     }
 
+    const tilesKey = plain ? '' : tiles.map((t) => t.key).join('|');
+    if (settle.current.key !== tilesKey) settle.current = { key: tilesKey, total: plain ? 0 : tiles.length, ok: 0, done: 0 };
+
     // Grid + scale bar in metres (offline fallback).
     const ppm = S / mPerUnit; // px per metre
     const step = NICE.find((s) => s * ppm >= 40) ?? NICE[NICE.length - 1];
@@ -143,6 +165,7 @@ export default function RouteMap({ points, height = 240, emptyText = 'Waiting fo
             y={t.y}
             style={{ position: 'absolute', left: t.left, top: t.top, width: tilePx + 0.5, height: tilePx + 0.5 }}
             onOk={markOk}
+            onDone={onDone}
           />
         ))}
         <Svg width={w} height={height} style={StyleSheet.absoluteFill}>

@@ -36,7 +36,7 @@ import { MIN_SAVE_DISTANCE_M, Run } from './src/history';
 import { loadSettings, useSettings } from './src/settings';
 import { distNum, paceLabel, unitName } from './src/units';
 import { badgeText } from './src/efforts';
-import { migrateEfforts } from './src/migrate';
+import { migrateEfforts, migratePace, migrateSplits } from './src/migrate';
 import { clearSnapshot, loadSnapshot, persistRun, saveSnapshot } from './src/inprogress';
 import { SEED_DEMO, seedDemo } from './src/seed';
 import YouScreen from './src/YouScreen';
@@ -195,7 +195,7 @@ export default function App() {
 
   // Recalculate older runs' best efforts in the background, a few seconds after launch.
   useEffect(() => {
-    const id = setTimeout(() => migrateEfforts().catch(() => {}), 4000);
+    const id = setTimeout(() => migrateEfforts().then(migratePace).then(migrateSplits).catch(() => {}), 4000);
     return () => clearTimeout(id);
   }, []);
 
@@ -552,8 +552,8 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0B0B0F', paddingTop: 64, paddingHorizontal: 20, paddingBottom: 32 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  logoBadge: { backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 6, paddingVertical: 4 },
-  logo: { width: 56, height: 38 },
+  logoBadge: { justifyContent: 'center' }, // no background: the mascot sits straight on the dark header
+  logo: { width: 66, height: 44 },
   brand: { fontSize: 24, letterSpacing: 1 },
   brandRun: { color: '#E02030', fontWeight: '900', fontStyle: 'italic' },
   brandButan: { color: '#8FC23A', fontWeight: '700' },

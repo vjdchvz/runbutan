@@ -7,6 +7,7 @@ type Native = {
   showRunNotification(title: string, text: string, paused: boolean, stopArmed: boolean): void;
   cancelRunNotification(): void;
   saveToDownloads(name: string, content: string, mime: string): Promise<string>;
+  saveImageToGallery(path: string, name: string): Promise<string>;
   addListener(event: 'onAction', cb: (e: { action: RunAction }) => void): { remove(): void };
 };
 
@@ -50,6 +51,10 @@ export const cancelRunNotification = () => {
 export const saveToDownloads = (name: string, content: string, mime: string): Promise<string> => {
   if (!native) return Promise.reject(new Error('Saving files is not available in this build'));
   return native.saveToDownloads(name, content, mime);
+};
+export const saveImageToGallery = (path: string, name: string): Promise<string> => {
+  if (!native) return Promise.reject(new Error('Saving images is not available in this build'));
+  return native.saveImageToGallery(path, name);
 };
 export const onRunAction = (cb: (a: RunAction) => void) => {
   try {

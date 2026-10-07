@@ -5,6 +5,7 @@ import { badgeText, effortLabel, isEffortDistance } from './efforts';
 import { saveGpxToDownloads, shareGpx, STRAVA_UPLOAD_URL } from './gpx';
 import RouteMap from './RouteMap';
 import { DialogOptions, useDialog } from './Dialog';
+import StoryScreen from './StoryScreen';
 import { fmtPace, fmtTime, TrackPt } from './session';
 import { runTitle } from './stats';
 import { useSettings } from './settings';
@@ -186,6 +187,7 @@ function RunDetail({
 }) {
   const [track, setTrack] = useState<TrackPt[] | null>(null);
   const [editing, setEditing] = useState(false);
+  const [story, setStory] = useState(false);
   const [title, setTitle] = useState(runTitle(run));
   useEffect(() => {
     loadTrack(run.id).then(setTrack);
@@ -236,73 +238,82 @@ function RunDetail({
   };
   const badges = (run.badges ?? []).filter((b) => isEffortDistance(b.d)).sort((a, b) => a.rank - b.rank || b.d - a.d);
 
+  if (story && track && track.length > 1) {
+    return <StoryScreen run={run} track={track} onBack={() => setStory(false)} onDialog={onDialog} />;
+  }
+
   return (
     <View style={styles.root}>
-      <Pressable onPress={onBack} hitSlop={12}>
-        <Text style={styles.back}>‹ ALL RUNS</Text>
-      </Pressable>
-      {editing ? (
-        <TextInput
-          value={title}
-          onChangeText={setTitle}
-          onSubmitEditing={saveTitle}
-          onBlur={saveTitle}
-          autoFocus
-          selectTextOnFocus
-          maxLength={40}
-          returnKeyType="done"
-          style={styles.titleInput}
-          placeholderTextColor="#55555F"
-        />
-      ) : (
-        <Pressable onPress={() => setEditing(true)} style={styles.titleRow} hitSlop={8}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.edit}>✎</Text>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+        <Pressable onPress={onBack} hitSlop={12}>
+          <Text style={styles.back}>‹ ALL RUNS</Text>
         </Pressable>
-      )}
-      <Text style={styles.date2}>{fmtDate(run.startedAt)}</Text>
+        {editing ? (
+          <TextInput
+            value={title}
+            onChangeText={setTitle}
+            onSubmitEditing={saveTitle}
+            onBlur={saveTitle}
+            autoFocus
+            selectTextOnFocus
+            maxLength={40}
+            returnKeyType="done"
+            style={styles.titleInput}
+            placeholderTextColor="#55555F"
+          />
+        ) : (
+          <Pressable onPress={() => setEditing(true)} style={styles.titleRow} hitSlop={8}>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.edit}>✎</Text>
+          </Pressable>
+        )}
+        <Text style={styles.date2}>{fmtDate(run.startedAt)}</Text>
 
-      <View style={styles.row}>
-        <Stat label={unitName().toUpperCase()} value={distNum(run.distanceM)} />
-        <Stat label={`AVG ${paceLabel().toUpperCase()}`} value={fmtPace(run.avgPaceSec)} />
-        <Stat label="TIME" value={fmtTime(run.elapsedSec ?? run.movingSec)} />
-      </View>
-      {run.elevGainM !== undefined && (
         <View style={styles.row}>
-          <Stat label="ELEV GAIN" value={`${Math.round(run.elevGainM)} m`} />
+          <Stat label={unitName().toUpperCase()} value={distNum(run.distanceM)} />
+          <Stat label={`AVG ${paceLabel().toUpperCase()}`} value={fmtPace(run.avgPaceSec)} />
+          <Stat label="TIME" value={fmtTime(run.elapsedSec ?? run.movingSec)} />
         </View>
-      )}
+        {run.elevGainM !== undefined && (
+          <View style={styles.row}>
+            <Stat label="ELEV GAIN" value={`${Math.round(run.elevGainM)} m`} />
+          </View>
+        )}
 
-      <View style={{ marginTop: 14 }}>
-        <RouteMap points={track ?? []} height={220} emptyText={track === null ? 'Loading…' : 'No route saved for this run'} />
-      </View>
+        <View style={{ marginTop: 14 }}>
+          <RouteMap points={track ?? []} height={220} emptyText={track === null ? 'Loading…' : 'No route saved for this run'} />
+        </View>
 
-      <ScrollView style={styles.list} contentContainerStyle={{ gap: 8 }} showsVerticalScrollIndicator={false}>
-        {badges.map((b) => (
-          <View key={b.d} style={styles.badge}>
-            <Text style={styles.badgeText}>{MEDAL[b.rank]} {badgeText(b)}</Text>
-          </View>
-        ))}
-        {!!run.efforts?.some((e) => isEffortDistance(e.d)) && <Text style={[styles.label, { marginTop: 6 }]}>BEST EFFORTS IN THIS RUN</Text>}
-        {run.efforts?.filter((e) => isEffortDistance(e.d)).map((e) => (
-          <View key={e.d} style={styles.splitRow}>
-            <Text style={styles.splitKm}>{effortLabel(e.d)}</Text>
-            <Text style={styles.splitTime}>{fmtTime(e.s)}</Text>
-            <Text style={styles.cardTime}>{fmtPace(e.s / (e.d / 1000))} {paceLabel()}</Text>
-          </View>
-        ))}
-        {run.splits.length > 0 && <Text style={[styles.label, { marginTop: 6 }]}>{(run.splitUnit ?? 'km').toUpperCase()} SPLITS</Text>}
-        {run.splits.map((sp) => (
-          <View key={sp.km} style={styles.splitRow}>
-            <Text style={styles.splitKm}>{(run.splitUnit ?? 'km').toUpperCase()} {sp.km}</Text>
-            <Text style={styles.splitTime}>{fmtPace(sp.splitSec / (run.splitUnit === 'mi' ? 1.609344 : 1))} {paceLabel()}</Text>
-            <Text style={styles.cardTime}>{fmtTime(sp.totalSec)}</Text>
-          </View>
-        ))}
+        <View style={[styles.list, { gap: 8 }]}>
+          {badges.map((b) => (
+            <View key={b.d} style={styles.badge}>
+              <Text style={styles.badgeText}>{MEDAL[b.rank]} {badgeText(b)}</Text>
+            </View>
+          ))}
+          {!!run.efforts?.some((e) => isEffortDistance(e.d)) && <Text style={[styles.label, { marginTop: 6 }]}>BEST EFFORTS IN THIS RUN</Text>}
+          {run.efforts?.filter((e) => isEffortDistance(e.d)).map((e) => (
+            <View key={e.d} style={styles.splitRow}>
+              <Text style={styles.splitKm}>{effortLabel(e.d)}</Text>
+              <Text style={styles.splitTime}>{fmtTime(e.s)}</Text>
+              <Text style={styles.cardTime}>{fmtPace(e.s / (e.d / 1000))} {paceLabel()}</Text>
+            </View>
+          ))}
+          {run.splits.length > 0 && <Text style={[styles.label, { marginTop: 6 }]}>{(run.splitUnit ?? 'km').toUpperCase()} SPLITS</Text>}
+          {run.splits.map((sp) => (
+            <View key={sp.km} style={styles.splitRow}>
+              <Text style={styles.splitKm}>{(run.splitUnit ?? 'km').toUpperCase()} {sp.km}</Text>
+              <Text style={styles.splitTime}>{fmtPace(sp.splitSec / (run.splitUnit === 'mi' ? 1.609344 : 1))} {paceLabel()}</Text>
+              <Text style={styles.cardTime}>{fmtTime(sp.totalSec)}</Text>
+            </View>
+          ))}
+        </View>
       </ScrollView>
 
       <Pressable style={[styles.btn, !canShare && styles.btnOff]} onPress={uploadToStrava} disabled={!canShare}>
         <Text style={styles.btnText}>UPLOAD TO STRAVA</Text>
+      </Pressable>
+      <Pressable style={[styles.btn, styles.btnAlt, !canShare && styles.btnOff]} onPress={() => setStory(true)} disabled={!canShare}>
+        <Text style={styles.btnText}>CREATE STORY IMAGE</Text>
       </Pressable>
       <Pressable onPress={share} disabled={!canShare} style={styles.delete}>
         <Text style={[styles.deleteText, !canShare && { opacity: 0.4 }]}>Share the GPX file…</Text>
@@ -328,7 +339,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   stat: { flex: 1 },
   statValue: { color: '#fff', fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  list: { flex: 1, marginTop: 12 },
+  list: { marginTop: 12 },
   empty: { color: '#8A8A96', textAlign: 'center', marginTop: 24 },
   hint: { color: '#55555F', textAlign: 'center', fontSize: 12, marginTop: 2 },
   card: { backgroundColor: '#17171F', padding: 14, borderRadius: 16 },
@@ -352,6 +363,7 @@ const styles = StyleSheet.create({
   splitTime: { color: '#fff', fontWeight: '800', fontSize: 16 },
   btn: { backgroundColor: '#FF4D2E', paddingVertical: 16, borderRadius: 14, alignItems: 'center', marginTop: 12 },
   btnOff: { backgroundColor: '#3A3A46' },
+  btnAlt: { backgroundColor: '#2A2A35', marginTop: 8 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 1.2 },
   delete: { alignItems: 'center', paddingVertical: 12 },
   deleteText: { color: '#8A8A96', fontWeight: '700' },
