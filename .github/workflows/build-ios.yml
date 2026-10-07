@@ -46,19 +46,31 @@ jobs:
       # 1) Simulator build: runs in Xcode's iOS Simulator on any Mac, no Apple account needed.
       - name: Build for iOS Simulator
         run: |
-          set -o pipefail
           xcodebuild -workspace "${{ steps.proj.outputs.workspace }}" -scheme "${{ steps.proj.outputs.scheme }}" \
             -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO | tail -40
+            -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO > sim.log 2>&1 || {
+            echo "::group::Errors"; grep -nE "error:|fatal error|\*\* BUILD FAILED|ExpoModulesJSI\]" sim.log | head -150; echo "::endgroup::"
+            tail -60 sim.log; exit 1; }
+          tail -5 sim.log
 
       # 2) Device build, unsigned. An iPhone only installs signed apps: re-sign this .ipa with your
       #    own Apple ID in Sideloadly/AltStore (free, 7-day), or add signing secrets for TestFlight.
       - name: Build for iPhone (unsigned)
         run: |
-          set -o pipefail
           xcodebuild -workspace "${{ steps.proj.outputs.workspace }}" -scheme "${{ steps.proj.outputs.scheme }}" \
             -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
-            -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tail -40
+            -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" > device.log 2>&1 || {
+            echo "::group::Errors"; grep -nE "error:|fatal error|\*\* BUILD FAILED|ExpoModulesJSI\]" device.log | head -150; echo "::endgroup::"
+            tail -60 device.log; exit 1; }
+          tail -5 device.log
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-logs
+          path: '*.log'
+          if-no-files-found: ignore
 
       - name: Package
         run: |
