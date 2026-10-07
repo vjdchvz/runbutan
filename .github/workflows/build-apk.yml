@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }} # only used to check it's set; see the last step
     steps:
       - uses: actions/checkout@v4
 
@@ -71,3 +73,22 @@ jobs:
             Install: download the APK below, allow "install unknown apps" for your browser/file manager, then open it.
           make_latest: true
           files: runbutan-latest.apk
+
+      # Public downloads live in vjdchvz/runbutan-releases (public; binaries only — this source repo
+      # stays private). Needs the RELEASES_TOKEN secret: a fine-grained token with Contents: write on
+      # that repo only. Skipped, not failed, until the secret exists.
+      - name: Publish to the public downloads repo
+        if: ${{ env.RELEASES_TOKEN != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: vjdchvz/runbutan-releases
+          token: ${{ secrets.RELEASES_TOKEN }}
+          tag_name: android-latest
+          target_commitish: main
+          name: RUNbutan for Android (latest)
+          body: |
+            Latest Android build. Download runbutan-latest.apk on your phone, open it, and allow "install unknown apps" when asked.
+            Each new version installs over the last one and keeps your runs.
+          make_latest: true
+          files: |
+            runbutan-latest.apk
