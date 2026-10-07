@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 75
     permissions:
       contents: write
@@ -19,7 +19,8 @@ jobs:
         with:
           node-version: 20
 
-      # Expo SDK 57 / React Native 0.86 want the newest Xcode on the image, not the default one.
+      # Expo SDK 57 needs Xcode 26.4+ (its Swift/C++ interop uses SWIFT_RETURNS_RETAINED on
+      # constructors, which Xcode 26.3 rejects), so macos-26 and its newest Xcode.
       - name: Select newest Xcode
         run: |
           XC=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
