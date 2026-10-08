@@ -15,6 +15,8 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -31,6 +33,12 @@ class RunKitModule : Module() {
   private val context: Context get() = requireNotNull(appContext.reactContext)
   private var focus: AudioFocusRequest? = null
   private var receiver: BroadcastReceiver? = null
+  private var screenReceiver: BroadcastReceiver? = null
+  private val main = Handler(Looper.getMainLooper())
+
+  // The cadence beat currently wanted (bpm), or null when it is off. Kept here, not only in the
+  // vibrator, so it can be started again after Android cancels it when the screen locks.
+  private var beatBpm: Int? = null
 
   private fun vibrator(): Vibrator? =
     if (Build.VERSION.SDK_INT >= 31) {
@@ -39,6 +47,21 @@ class RunKitModule : Module() {
       @Suppress("DEPRECATION")
       context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
     }
+
+  private fun vibrateBeat(bpm: Int): Boolean {
+    if (Build.VERSION.SDK_INT < 26) return false
+    val v = vibrator() ?: return false
+    val period = (60000L / bpm.coerceIn(60, 240)).coerceAtLeast(120L)
+    val pulse = 35L
+    val effect = VibrationEffect.createWaveform(longArrayOf(0, pulse, period - pulse), 0)
+    val attrs = AudioAttributes.Builder()
+      .setUsage(AudioAttributes.USAGE_ALARM)
+      .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+      .build()
+    v.cancel()
+    v.vibrate(effect, attrs)
+    return true
+  }
 
   private val actionToggle get() = "${context.packageName}.action.TOGGLE"
   private val actionStop get() = "${context.packageName}.action.STOP"
@@ -68,11 +91,35 @@ class RunKitModule : Module() {
         context.registerReceiver(r, filter)
       }
       receiver = r
+
+      // Android cancels every running vibration when the screen turns off (system log:
+      // "cancelled_by_screen_off"), even alarm-type ones, so a beat started before locking the phone
+      // just stops. It only cancels vibrations that began BEFORE the screen went off, so starting the
+      // same pattern again right after the lock keeps it going.
+      val sr = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, i: Intent?) {
+          val bpm = beatBpm ?: return
+          main.postDelayed({ if (beatBpm != null) vibrateBeat(bpm) }, 300)
+        }
+      }
+      if (Build.VERSION.SDK_INT >= 33) {
+        context.registerReceiver(sr, IntentFilter(Intent.ACTION_SCREEN_OFF), Context.RECEIVER_NOT_EXPORTED)
+      } else {
+        context.registerReceiver(sr, IntentFilter(Intent.ACTION_SCREEN_OFF))
+      }
+      screenReceiver = sr
     }
 
     OnDestroy {
       receiver?.let { runCatching { context.unregisterReceiver(it) } }
       receiver = null
+      screenReceiver?.let { runCatching { context.unregisterReceiver(it) } }
+      screenReceiver = null
+      main.removeCallbacksAndMessages(null)
+      if (beatBpm != null) {
+        beatBpm = null
+        runCatching { vibrator()?.cancel() }
+      }
     }
 
     // ---- audio ducking ----
@@ -102,23 +149,19 @@ class RunKitModule : Module() {
     // ---- cadence beat ----
     // One repeating waveform handed to the system vibrator: Android replays it on its own, so the beat
     // keeps going with the screen off or the app in the background (a JS timer gets paused there).
-    // Alarm usage: the vibrator lets alarm-type vibrations continue for background apps.
+    // Alarm usage: the vibrator lets alarm-type vibrations continue for background apps. Locking the
+    // screen still cancels it, which the ACTION_SCREEN_OFF receiver above undoes.
     Function("startBeat") { bpm: Int ->
-      if (Build.VERSION.SDK_INT < 26) return@Function false
-      val v = vibrator() ?: return@Function false
-      val period = (60000L / bpm.coerceIn(60, 240)).coerceAtLeast(120L)
-      val pulse = 35L
-      val effect = VibrationEffect.createWaveform(longArrayOf(0, pulse, period - pulse), 0)
-      val attrs = AudioAttributes.Builder()
-        .setUsage(AudioAttributes.USAGE_ALARM)
-        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-        .build()
-      v.cancel()
-      v.vibrate(effect, attrs)
-      true
+      val ok = vibrateBeat(bpm)
+      beatBpm = if (ok) bpm else null
+      ok
     }
 
-    Function("stopBeat") { vibrator()?.cancel() }
+    Function("stopBeat") {
+      beatBpm = null
+      main.removeCallbacksAndMessages(null)
+      vibrator()?.cancel()
+    }
 
     // ---- save a text file into the phone's public Downloads folder (no permission needed on Android 10+) ----
     AsyncFunction("saveToDownloads") { name: String, content: String, mime: String ->
@@ -199,14 +242,22 @@ class RunKitModule : Module() {
     Function("showRunNotification") { title: String, text: String, paused: Boolean, stopArmed: Boolean ->
       if (Build.VERSION.SDK_INT < 26) return@Function
       val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      // IMPORTANCE_LOW is labelled "Silent" by Android, and phones set to hide silent notifications on the
+      // lock screen (the default on many, e.g. vivo/Funtouch) never show it there. DEFAULT counts as
+      // "alerting", so it appears on the lock screen; sound, vibration and lights stay off so it is
+      // still quiet. A channel's importance can't be raised after creation, hence a new channel id.
       if (nm.getNotificationChannel(CHANNEL) == null) {
         nm.createNotificationChannel(
-          NotificationChannel(CHANNEL, "Run in progress", NotificationManager.IMPORTANCE_LOW).apply {
+          NotificationChannel(CHANNEL, "Run in progress", NotificationManager.IMPORTANCE_DEFAULT).apply {
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             setShowBadge(false)
+            setSound(null, null)
+            enableVibration(false)
+            enableLights(false)
           }
         )
       }
+      if (nm.getNotificationChannel(OLD_CHANNEL) != null) runCatching { nm.deleteNotificationChannel(OLD_CHANNEL) }
       // Reuse the id of the foreground-service notification so there is only ONE notification.
       val id = runCatching {
         nm.activeNotifications.firstOrNull { it.notification.flags and Notification.FLAG_FOREGROUND_SERVICE != 0 }?.id
@@ -251,7 +302,8 @@ class RunKitModule : Module() {
     val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     if (Build.VERSION.SDK_INT >= 26) {
       runCatching {
-        nm.activeNotifications.filter { it.notification.channelId == CHANNEL }.forEach { nm.cancel(it.id) }
+        nm.activeNotifications.filter { it.notification.channelId == CHANNEL || it.notification.channelId == OLD_CHANNEL }
+          .forEach { nm.cancel(it.id) }
       }
     }
   }
@@ -265,7 +317,8 @@ class RunKitModule : Module() {
     )
 
   companion object {
-    private const val CHANNEL = "runbutan_run"
+    private const val CHANNEL = "runbutan_run_v2"
+    private const val OLD_CHANNEL = "runbutan_run" // IMPORTANCE_LOW ("Silent"): hidden on many lock screens
     private const val FALLBACK_ID = 481756
   }
 }
