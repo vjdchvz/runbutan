@@ -25,6 +25,7 @@ export type Run = {
   splits: Split[];
   splitUnit?: 'km' | 'mi'; // what one split was: a km (older runs) or a mile
   title?: string;
+  source?: 'strava'; // imported from a Strava export rather than recorded here
   efforts?: Effort[]; // fastest 400 m / 1 km / 5 km ... found inside this run
   badges?: Badge[]; // record callouts earned when the run was saved
   thumb?: [number, number][]; // ~60 [lat, lon] points for the list thumbnail (no route load needed)

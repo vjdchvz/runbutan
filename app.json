@@ -43,7 +43,8 @@
         {
           "iosUrlScheme": "com.googleusercontent.apps.787019203001-2de4t4nr3pum7iqq2khf4mlutsenlo9j"
         }
-      ]
+      ],
+      "./plugins/withAsyncStorageSize"
     ],
     "ios": {
       "bundleIdentifier": "com.runbutan.app",

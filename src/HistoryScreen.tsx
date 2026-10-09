@@ -333,7 +333,7 @@ function RunDetail({
             <Text style={styles.edit}>✎</Text>
           </Pressable>
         )}
-        <Text style={styles.date2}>{fmtDate(run.startedAt)}</Text>
+        <Text style={styles.date2}>{fmtDate(run.startedAt)}{run.source === 'strava' ? ' · Imported from Strava' : ''}</Text>
 
         <View style={styles.row}>
           <Stat label={unitName().toUpperCase()} value={distNum(run.distanceM)} />

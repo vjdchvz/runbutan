@@ -5,6 +5,10 @@ import { speakTest } from './session';
 import { getSettings, Settings, updateSettings, useSettings } from './settings';
 import { googleSignInReady, signOutUser, useAuthState, useGoogleSignIn } from './auth';
 import { syncNow } from './sync';
+import { useDialog } from './Dialog';
+import { importStravaRuns, pickStravaExport } from './importStrava';
+import type { StravaExport } from './stravaExport';
+import { distNum, unitName } from './units';
 
 const INTERVALS = [
   { label: 'Off', v: 0 },
@@ -23,6 +27,14 @@ const nice = (v: V, n: number) => {
   return `${v.language} · voice ${n}${g ? ` · ${g[1]}` : code ? ` · ${code}` : ''}${isOnline(v) ? ' · needs internet' : ' · works offline'}`;
 };
 
+// "Left out: 12 Rides, 3 Walks." for activities that are not runs.
+const skippedText = (ex: StravaExport) => {
+  const parts = Object.entries(ex.skippedTypes).map(([k, n]) => `${n} ${k}${n === 1 ? '' : 's'}`);
+  const rest = ex.tooShort ? [`${ex.tooShort} too short`] : [];
+  const all = [...parts, ...rest];
+  return all.length ? `\nLeft out: ${all.join(', ')}.` : '';
+};
+
 export default function SettingsScreen({ onBack, muted }: { onBack: () => void; muted: boolean }) {
   const st = useSettings();
   const { user, loading } = useAuthState();
@@ -34,6 +46,59 @@ export default function SettingsScreen({ onBack, muted }: { onBack: () => void; 
       .catch(() => {})
       .finally(() => setSyncing(false));
   };
+  const { dialog, showDialog } = useDialog();
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const info = (title: string, message: string, highlight?: string) =>
+    showDialog({ title, message, highlight, confirmLabel: 'OK' });
+
+  // Strava archive (.zip emailed by Strava) -> look inside -> ask -> import.
+  const startImport = async () => {
+    setImportMsg('Reading your Strava file…');
+    try {
+      const ex = await pickStravaExport();
+      setImportMsg(null);
+      if (!ex) return;
+      if (!ex.runs.length) {
+        info('Nothing to import', `No runs were found in that file.${skippedText(ex)}`);
+        return;
+      }
+      const day = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      const total = ex.runs.reduce((a, r) => a + r.distanceM, 0);
+      showDialog({
+        title: 'Import from Strava',
+        highlight: `${ex.runs.length} ${ex.runs.length === 1 ? 'run' : 'runs'} · ${distNum(total, 1)} ${unitName()}`,
+        message: `${day(ex.runs[0].startedAt)} to ${day(ex.runs[ex.runs.length - 1].startedAt)}.${skippedText(ex)}\n\nRuns already in RUNbutan are skipped, so importing twice is safe.`,
+        confirmLabel: 'IMPORT',
+        cancelLabel: 'CANCEL',
+        onConfirm: () => void runImport(ex),
+      });
+    } catch (e) {
+      setImportMsg(null);
+      info("Couldn't read that file", e instanceof Error ? e.message : 'Something went wrong opening the file.');
+    }
+  };
+  const runImport = async (ex: StravaExport) => {
+    setImportMsg(`Importing 0 / ${ex.runs.length}…`);
+    try {
+      const r = await importStravaRuns(ex, (d, t) => setImportMsg(`Importing ${d} / ${t}…`));
+      setImportMsg(null);
+      info(
+        r.imported ? 'Import finished' : 'Nothing new',
+        [
+          r.duplicates ? `${r.duplicates} already in RUNbutan, skipped.` : '',
+          r.routeless ? `${r.routeless} had no readable route, so they have no map.` : '',
+          r.imported ? 'Open History to see them. Your records and badges were updated.' : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        `${r.imported} ${r.imported === 1 ? 'run' : 'runs'} added`,
+      );
+    } catch (e) {
+      setImportMsg(null);
+      info("Couldn't finish importing", e instanceof Error ? e.message : 'Something went wrong.');
+    }
+  };
+
   const [voices, setVoices] = useState<V[]>([]);
   useEffect(() => {
     Speech.getAvailableVoicesAsync()
@@ -57,6 +122,7 @@ export default function SettingsScreen({ onBack, muted }: { onBack: () => void; 
 
   return (
     <ScrollView style={styles.root} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14, paddingBottom: 16 }}>
+      {dialog}
       <Pressable onPress={onBack} hitSlop={12}><Text style={styles.back}>‹ BACK</Text></Pressable>
       <Text style={styles.title}>Settings</Text>
 
@@ -110,6 +176,23 @@ export default function SettingsScreen({ onBack, muted }: { onBack: () => void; 
           ))}
         </View>
         <Text style={styles.hint}>Changes distances, paces, splits and the voice. Best-effort distances and training plans stay in km.</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>IMPORT FROM STRAVA</Text>
+        <Pressable style={[styles.test, !!importMsg && { opacity: 0.7 }]} onPress={startImport} disabled={!!importMsg}>
+          {importMsg ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <ActivityIndicator color="#fff" />
+              <Text style={styles.testText}>{importMsg}</Text>
+            </View>
+          ) : (
+            <Text style={styles.testText}>CHOOSE STRAVA ZIP</Text>
+          )}
+        </Pressable>
+        <Text style={styles.hint}>
+          Bring your Strava runs into RUNbutan with their routes, splits and records. On strava.com go to Settings → My Account → Download or Delete Your Account → Get Started → Request Your Archive. Strava emails you a .zip: save it on this phone and pick it here.
+        </Text>
       </View>
 
       <View style={styles.card}>
