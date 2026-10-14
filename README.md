@@ -10,7 +10,7 @@ your history yours.
 
 [![Android build](https://github.com/vjdchvz/runbutan/actions/workflows/build-apk.yml/badge.svg)](https://github.com/vjdchvz/runbutan/actions/workflows/build-apk.yml)
 ![Platforms](https://img.shields.io/badge/platforms-Android%20%C2%B7%20iOS-3DDC84)
-![Expo SDK 57](https://img.shields.io/badge/Expo%20SDK-57-000020?logo=expo)
+![Expo SDK 57](https://img.shields.io/badge/Expo%20SDK-57-4630EB)
 ![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![License: all rights reserved](https://img.shields.io/badge/license-all%20rights%20reserved-lightgrey)
 
