@@ -22,9 +22,13 @@ your history yours.
 
 <br />
 
-<a href="https://github.com/vjdchvz/runbutan/raw/main/docs/media/runbutan-tour.mp4"><img src="docs/media/demo.gif" alt="RUNbutan in action: live pace, voice call-outs and kilometre splits" width="300" /></a>
+</div>
 
-<sub>Click the animation to play the full narrated tour (5 minutes, 4 MB).</sub>
+https://github.com/user-attachments/assets/53d9752b-3506-4830-a26f-1bc0dfa93a8e
+
+<div align="center">
+
+<sub>The full narrated tour, 5 minutes. Press play above.</sub>
 
 </div>
 
