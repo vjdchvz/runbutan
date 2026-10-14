@@ -14,7 +14,7 @@ your history yours.
 ![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![License: all rights reserved](https://img.shields.io/badge/license-all%20rights%20reserved-lightgrey)
 
-[**Download**](#download) &nbsp;·&nbsp; [**Watch the 5-minute tour**](docs/media/runbutan-tour.mp4) &nbsp;·&nbsp; [**How it works**](#how-it-measures-a-run)
+[**Download**](#download) &nbsp;·&nbsp; [**Watch the 5-minute tour**](https://github.com/vjdchvz/runbutan/raw/main/docs/media/runbutan-tour.mp4) &nbsp;·&nbsp; [**How it works**](#how-it-measures-a-run)
 
 <br />
 
@@ -22,9 +22,9 @@ your history yours.
 
 <br />
 
-<a href="docs/media/runbutan-tour.mp4"><img src="docs/media/demo.gif" alt="RUNbutan in action: live pace, voice call-outs and kilometre splits" width="300" /></a>
+<video src="https://github.com/vjdchvz/runbutan/raw/main/docs/media/runbutan-tour.mp4" poster="docs/media/demo.gif" controls muted width="720"></video>
 
-<sub>Click the animation to watch the full narrated tour.</sub>
+<sub>The full narrated tour (5 minutes). <a href="https://github.com/vjdchvz/runbutan/raw/main/docs/media/runbutan-tour.mp4">Open the video file</a> if it does not play here.</sub>
 
 </div>
 
