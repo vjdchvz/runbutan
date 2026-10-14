@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BackHandler, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { deleteRun, loadRuns, loadTrack, Run, summarize, thumbToTrack, updateRun } from './history';
+import { deleteRun, hasFixLog, loadRuns, loadTrack, Run, summarize, thumbToTrack, updateRun } from './history';
+import { exportFixLog } from './fixlog';
 import { badgeText, effortLabel, isEffortDistance } from './efforts';
 import { saveGpxToDownloads, shareGpx, STRAVA_UPLOAD_URL } from './gpx';
 import RouteMap from './RouteMap';
@@ -236,6 +237,10 @@ function RunDetail({
   const [editing, setEditing] = useState(false);
   const [story, setStory] = useState(false);
   const [title, setTitle] = useState(runTitle(run));
+  const [hasLog, setHasLog] = useState(false);
+  useEffect(() => {
+    hasFixLog(run.id).then(setHasLog).catch(() => {});
+  }, [run.id]);
   const weightKg = getSettings().weightKg;
   useEffect(() => {
     loadTrack(run.id).then(setTrack);
@@ -262,6 +267,18 @@ function RunDetail({
     }
   };
   const canShare = !!track && track.length > 1;
+  const saveLog = async () => {
+    try {
+      const name = await exportFixLog(run);
+      onDialog({
+        title: 'GPS log saved',
+        message: `${name}\n\nIt has every GPS fix of this run and what the app did with it. Send it along when a distance or pace looks off.`,
+        confirmLabel: 'OK',
+      });
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not save the GPS log');
+    }
+  };
 
   // Strava's website can't be handed a file by an app, so: save the GPX to Downloads, then open the upload
   // page, where "Choose Files" finds it. If saving is impossible, fall back to the normal share sheet.
@@ -343,6 +360,7 @@ function RunDetail({
         <View style={styles.row}>
           {run.elevGainM !== undefined && <Stat label="ELEV GAIN" value={`${Math.round(run.elevGainM)} m`} />}
           <Stat label="KCAL" value={fmtKcal(caloriesFor(weightKg, run.distanceM, run.movingSec, run.elevGainM ?? 0))} />
+          <Stat label="MOVING" value={fmtTime(run.movingSec)} />
         </View>
 
         <View style={{ marginTop: 14 }}>
@@ -387,6 +405,14 @@ function RunDetail({
           <Pressable onPress={share} disabled={!canShare} style={styles.link} hitSlop={6}>
             <Text style={[styles.linkText, !canShare && { opacity: 0.4 }]} numberOfLines={1}>Share GPX file</Text>
           </Pressable>
+          {hasLog && (
+            <>
+              <View style={styles.linkDot} />
+              <Pressable onPress={saveLog} style={styles.link} hitSlop={6}>
+                <Text style={styles.linkText} numberOfLines={1}>GPS log</Text>
+              </Pressable>
+            </>
+          )}
           <View style={styles.linkDot} />
           <Pressable onPress={onDelete} style={styles.link} hitSlop={6}>
             <Text style={[styles.linkText, styles.linkDanger]} numberOfLines={1}>Delete run</Text>

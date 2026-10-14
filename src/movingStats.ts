@@ -11,6 +11,10 @@ import type { Split, TrackPt } from './session';
 // time Strava reported as 16:21) to the second, at a plain 1.0 m/s cutoff with the same 15 s
 // "a short stop still counts as moving" rest rule Strava uses.
 const STRAVA_MOVING_MS = 1.0;
+// Strava's own cut-off is ~0.894 m/s (a 30-minute mile). That is for the speed the phone reports,
+// which sits near zero while you stand still; positions-only speed needs the calibrated 1.0 above
+// because GPS drift makes a standing runner look like they are creeping along.
+const DOPPLER_MOVING_MS = 0.9;
 const REST_AFTER_MS = 15_000;
 
 export type MovingStats = { movingSec: number; avgPaceSec: number | null; splits: Split[] };
@@ -42,10 +46,14 @@ export const computeMovingStats = (
     const dt = (cur.t - prev.t) / 1000;
     if (dt <= 0) continue;
     const d = haversine(prev, cur);
-    const speed = d / dt;
+    // Prefer the phone's own speed when the route has it (runs recorded since the GPS log was added):
+    // position differences wobble while you wait at a light and were being counted as running.
+    const hasV = cur.v !== undefined;
+    const speed = hasV ? (cur.v as number) : d / dt;
+    const cutoff = hasV ? DOPPLER_MOVING_MS : STRAVA_MOVING_MS;
 
     const movBefore = movingTotalMs();
-    if (speed >= STRAVA_MOVING_MS) {
+    if (speed >= cutoff) {
       if (slowMs > 0 && slowMs <= REST_AFTER_MS) movingMs += slowMs; // it was only a brief slow patch
       slowMs = 0; // a longer one was rest: dropped
       movingMs += dt * 1000;

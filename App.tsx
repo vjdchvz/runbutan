@@ -14,6 +14,7 @@ import {
   getGps,
   getCoach,
   getCoachResult,
+  getFixLog,
   getGpsDiag,
   getSplitUnit,
   resetSession,
@@ -41,7 +42,7 @@ import { initAudioSession } from './src/audioSession';
 import { distNum, paceLabel, unitName } from './src/units';
 import { badgeText } from './src/efforts';
 import { migrateEfforts, migrateMovingTime } from './src/migrate';
-import { clearSnapshot, loadSnapshot, persistRun, saveSnapshot } from './src/inprogress';
+import { clearSnapshot, loadSnapshot, persistRun, saveSnapshot, type Snapshot } from './src/inprogress';
 import { SEED_DEMO, seedDemo } from './src/seed';
 import YouScreen from './src/YouScreen';
 import CoachScreen, { PlanCtx } from './src/CoachScreen';
@@ -64,7 +65,7 @@ const HistoryTab = memo(HistoryScreen);
 const YouTab = memo(YouScreen);
 const CoachTab = memo(CoachScreen);
 
-const snapshotNow = (): { run: Run; route: TrackPt[] } => {
+const snapshotNow = (): Snapshot => {
   const f = getStats();
   const startedAt = getStartedAt();
   return {
@@ -80,6 +81,7 @@ const snapshotNow = (): { run: Run; route: TrackPt[] } => {
       splitUnit: getSplitUnit(),
     },
     route: getTrack(),
+    fixes: getFixLog(),
   };
 };
 
@@ -147,7 +149,7 @@ export default function App() {
         cancelLabel: 'DISCARD',
         onCancel: () => void clearSnapshot().catch(() => {}),
         onConfirm: () =>
-          persistRun(snap.run, snap.route)
+          persistRun(snap.run, snap.route, false, snap.fixes)
             .then(() => clearSnapshot())
             .catch(() => showDialog({ title: 'RUNbutan', message: "Couldn't save the run. It is kept and will be offered again next launch.", confirmLabel: 'OK' })),
       });
@@ -319,14 +321,14 @@ export default function App() {
         cancelLabel: snap.run.distanceM >= 1 ? 'DISCARD' : undefined,
         onConfirm:
           snap.run.distanceM >= 1
-            ? () => void persistRun(snap.run, snap.route, true).catch(() => {})
+            ? () => void persistRun(snap.run, snap.route, true, snap.fixes).catch(() => {})
             : undefined,
       });
       return;
     }
     try {
       await saveSnapshot(snap).catch(() => {}); // safety copy before anything that could fail
-      const saved = await persistRun(snap.run, snap.route);
+      const saved = await persistRun(snap.run, snap.route, false, snap.fixes);
       await clearSnapshot();
       const badges = saved.badges ?? [];
       const lines = [...badges].sort((a, b) => a.rank - b.rank || b.d - a.d).map(badgeText);

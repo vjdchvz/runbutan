@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Badge, Effort } from './efforts';
-import type { Split, TrackPt } from './session';
+import type { FixLogRow, Split, TrackPt } from './session';
 
 // Storage layout (one key per run, so no single value grows without limit):
 //   runbutan.index.v2      JSON array of run ids, newest first
@@ -12,6 +12,8 @@ const INDEX_KEY = 'runbutan.index.v2';
 const RUN_PREFIX = 'runbutan.run.';
 const runKey = (id: string) => RUN_PREFIX + id;
 const trackKey = (id: string) => `runbutan.track.${id}`;
+const FIXLOG_PREFIX = 'runbutan.fixlog.';
+const FIXLOG_KEEP = 8; // ~100-500 KB each: keep the latest few only
 export const MIN_SAVE_DISTANCE_M = 50; // ignore accidental start/stop taps
 
 export type Run = {
@@ -144,7 +146,7 @@ export const loadTrack = async (id: string): Promise<TrackPt[]> => {
 export const deleteRun = async (id: string) => {
   const ids = await readIndex();
   await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(ids.filter((x) => x !== id)));
-  await AsyncStorage.multiRemove([runKey(id), trackKey(id)]);
+  await AsyncStorage.multiRemove([runKey(id), trackKey(id), FIXLOG_PREFIX + id]);
 };
 
 export const summarize = (runs: Run[]): Summary => {
@@ -165,3 +167,24 @@ export const summarize = (runs: Run[]): Summary => {
     longestM: runs.reduce((a, r) => Math.max(a, r.distanceM), 0),
   };
 };
+
+// ---- GPS decision log (see FixLogRow in session.ts) ----
+export const saveFixLog = async (id: string, rows: FixLogRow[]) => {
+  await AsyncStorage.setItem(FIXLOG_PREFIX + id, JSON.stringify(rows));
+  const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(FIXLOG_PREFIX));
+  if (keys.length > FIXLOG_KEEP) {
+    const stamp = (k: string) => Number(k.slice(FIXLOG_PREFIX.length)) || 0; // run ids are start times
+    const drop = keys.sort((a, b) => stamp(a) - stamp(b)).slice(0, keys.length - FIXLOG_KEEP);
+    await AsyncStorage.multiRemove(drop);
+  }
+};
+export const loadFixLog = async (id: string): Promise<FixLogRow[] | null> => {
+  try {
+    const raw = await AsyncStorage.getItem(FIXLOG_PREFIX + id);
+    return raw ? (JSON.parse(raw) as FixLogRow[]) : null;
+  } catch {
+    return null;
+  }
+};
+export const hasFixLog = async (id: string) =>
+  (await AsyncStorage.getAllKeys()).includes(FIXLOG_PREFIX + id);

@@ -84,7 +84,18 @@ const ALT_ALPHA = 0.05; // GPS altitude is noisy: smooth it...
 const ALT_STEP_M = 5; // ...and only count a climb/drop once it moves this far from the last counted level
 const MAX_ALT_ACC_M = 30;
 
-export type TrackPt = { t: number; lat: number; lon: number; ele?: number };
+export type TrackPt = {
+  t: number;
+  lat: number;
+  lon: number;
+  ele?: number;
+  v?: number; // the phone's own (Doppler) speed in m/s at this point, when it reported a usable one
+};
+// One row per GPS fix the phone delivered, and what the app did with it. Kept with the run so a
+// distance/pace difference against Strava can be replayed and explained instead of guessed.
+// [t ms, lat, lon, accuracy m, Doppler speed m/s, altitude m, altitude accuracy m,
+//  decision, metres added, distance after, moving ms after]
+export type FixLogRow = [number, number, number, number | null, number | null, number | null, number | null, string, number, number, number];
 type Pt = { t: number; lat: number; lon: number; dist: number };
 export type Split = { km: number; splitSec: number; totalSec: number };
 export type Stats = {
@@ -104,6 +115,9 @@ type Listener = (s: Stats) => void;
 
 const listeners = new Set<Listener>();
 let pts: Pt[] = [];
+let fixLog: FixLogRow[] = [];
+const FIXLOG_MAX = 20000; // ~5.5 h at one fix a second
+let lastDop: number | null = null; // Doppler speed of the previous accepted fix
 let track: TrackPt[] = []; // thinned (~2 s) route for the map + GPX
 let movingMs = 0; // moving time already settled
 let slowMs = 0; // current stretch below the moving speed: counts as moving only if it ends within 15 s
@@ -285,12 +299,20 @@ const updateAlt = (alt: number | null | undefined, acc: number | null | undefine
   }
 };
 
-const rec = (f: { t: number; lat: number; lon: number }) => {
+const rec = (f: { t: number; lat: number; lon: number }, v?: number) => {
   const l = track[track.length - 1];
   if (!l || f.t - l.t >= 2000) {
-    track.push({ t: f.t, lat: f.lat, lon: f.lon, ...(altSmooth !== null ? { ele: Math.round(altSmooth * 10) / 10 } : {}) });
+    track.push({
+      t: f.t,
+      lat: f.lat,
+      lon: f.lon,
+      ...(v !== undefined ? { v: Math.round(v * 10) / 10 } : {}),
+      ...(altSmooth !== null ? { ele: Math.round(altSmooth * 10) / 10 } : {}),
+    });
   }
 };
+
+export const getFixLog = (): FixLogRow[] => fixLog;
 
 export const getTrack = (): TrackPt[] => {
   const last = pts[pts.length - 1];
@@ -302,6 +324,8 @@ export const getTrack = (): TrackPt[] => {
 
 export const startSession = (workout?: Workout | null, paces?: ZonePaces | null) => {
   pts = [];
+  fixLog = [];
+  lastDop = null;
   track = [];
   altSmooth = null;
   altRef = null;
@@ -378,6 +402,8 @@ export const getCoachResult = () => ({ workoutId: coachW?.id ?? null, finished: 
 export const resetSession = () => {
   if (running) return;
   pts = [];
+  fixLog = [];
+  lastDop = null;
   track = [];
   splits = [];
   movingMs = 0;
@@ -452,14 +478,32 @@ export const addFix = (f: {
   reportGps(f.accuracy);
   fixesSeen++;
   if (f.accuracy !== null && (bestAcc === null || f.accuracy < bestAcc)) bestAcc = f.accuracy;
-  if (paused) return;
+  // Record what happened to this fix (see FixLogRow). `code` says why it was dropped or how it counted.
+  const logFix = (code: string, inc = 0) => {
+    if (fixLog.length >= FIXLOG_MAX) return;
+    const last = pts[pts.length - 1];
+    fixLog.push([
+      f.t,
+      Math.round(f.lat * 1e7) / 1e7,
+      Math.round(f.lon * 1e7) / 1e7,
+      f.accuracy === null ? null : Math.round(f.accuracy * 10) / 10,
+      f.speed == null || !isFinite(f.speed) ? null : Math.round(f.speed * 100) / 100,
+      f.altitude == null || !isFinite(f.altitude) ? null : Math.round(f.altitude * 10) / 10,
+      f.altitudeAccuracy == null || !isFinite(f.altitudeAccuracy) ? null : Math.round(f.altitudeAccuracy * 10) / 10,
+      code,
+      Math.round(inc * 100) / 100,
+      last ? Math.round(last.dist * 10) / 10 : 0,
+      Math.round(movingTotalMs()),
+    ]);
+  };
+  if (paused) return logFix('paused');
   // Drop the stale cached fix some phones deliver at start. If fix times keep looking "old" (the phone's
   // clock is off from GPS time), stop dropping after a few so the whole run isn't thrown away.
   if (f.t < startedAt - 2000 && staleDropped < 8) {
     staleDropped++;
-    return;
+    return logFix('stale');
   }
-  if (f.accuracy !== null && f.accuracy > MAX_ACCURACY_M) return;
+  if (f.accuracy !== null && f.accuracy > MAX_ACCURACY_M) return logFix('weak');
 
   if (resumePending && pts.length) {
     resumePending = false;
@@ -469,8 +513,10 @@ export const addFix = (f: {
     slowMs = 0;
     speedEma = null; // new segment after a pause: start the speed estimate afresh
     anchor = null;
+    lastDop = null;
     lastAnnounceT = f.t;
     rec(f);
+    logFix('resume');
     emit();
     return;
   }
@@ -482,15 +528,16 @@ export const addFix = (f: {
     rec(f);
     lastAnnounceT = f.t;
     if (waitedForGps) speakNow('GPS locked. Go!');
+    logFix('first');
     emit();
     return;
   }
 
   const dt = (f.t - prev.t) / 1000;
-  if (dt <= 0) return;
+  if (dt <= 0) return logFix('dup');
   const d = haversine(prev, f.lat, f.lon);
   const speed = d / dt;
-  if (speed > MAX_SPEED_MS) return;
+  if (speed > MAX_SPEED_MS) return logFix('jump');
 
   // Moving test over a ~5 s window, so duplicate/jittery single fixes don't drop time.
   let ref = prev;
@@ -511,7 +558,10 @@ export const addFix = (f: {
 
   // The phone's own speed (Doppler) is far more accurate than differences between noisy positions.
   // Some phones always report 0: if it says "still" while positions clearly moved, ignore it.
-  const dop = f.speed != null && isFinite(f.speed) && f.speed >= 0 && (f.accuracy === null || f.accuracy <= 30) ? f.speed : null;
+  // Used for every accepted fix: the speed comes from the satellites' Doppler shift, not the position, so a
+  // fix whose position is only +-30 m is still a good speed. (It used to be ignored above 30 m while fixes up to
+  // 35 m are accepted, which pushed those onto the "move 75 m before counting" fallback below.)
+  const dop = f.speed != null && isFinite(f.speed) && f.speed >= 0 ? f.speed : null;
   if (dop !== null && dop > 0.3) dopplerSeen = true;
   // A "0" speed is only believed once this phone has shown a real, non-zero speed during the run. Until then
   // the positions decide, because some phones (and the emulator) always report 0 even while moving.
@@ -525,21 +575,36 @@ export const addFix = (f: {
   // far longer than it was. So: with a trusted speed, distance = speed x time (accurate to ~1%).
   // Without speed, only count a step once you have moved clearly further than the GPS noise.
   let inc = 0;
+  let code = moving ? (useDop ? 'dop' : 'pos0') : 'still';
   if (moving) {
     if (useDop) {
+      // Whatever the position fallback had measured since its anchor but not yet counted belongs to the run.
+      // (Before, it was dropped, and a stale anchor could later be counted a second time.)
+      if (anchor) {
+        inc += haversine(anchor, prev.lat, prev.lon);
+        anchor = null;
+      }
       const v = (dop as number) * dt;
-      inc = dt <= 3 ? v : Math.min(d, v * 1.3 + 2);
+      if (dt <= 3) inc += v;
+      else {
+        // A gap (fixes dropped for weak accuracy, or the phone throttled GPS): a straight line cuts corners and
+        // the last speed alone can overshoot a stop. Average the speed at both ends, bounded by the straight line.
+        const avg = (((lastDop ?? (dop as number)) + (dop as number)) / 2) * dt;
+        inc += Math.min(Math.max(d, avg), d * 1.25 + 3);
+      }
     } else {
       if (!anchor) anchor = { lat: prev.lat, lon: prev.lon };
       const da = haversine(anchor, f.lat, f.lon);
       if (da >= Math.max(10, (f.accuracy ?? 8) * 2.5)) {
         inc = da;
         anchor = { lat: f.lat, lon: f.lon };
+        code = 'pos+';
       }
     }
   } else {
     anchor = null;
   }
+  lastDop = useDop ? (dop as number) : null;
   const dist = prev.dist + inc;
   // Strava-style moving time (see STRAVA_MOVING_MS): track slow stretches and decide when they end.
   const movBefore = movingTotalMs();
@@ -554,7 +619,8 @@ export const addFix = (f: {
   const cur: Pt = { t: f.t, lat: f.lat, lon: f.lon, dist };
   pts.push(cur);
   if (moving) updateAlt(f.altitude, f.altitudeAccuracy);
-  rec(f);
+  rec(f, useDop ? (dop as number) : undefined);
+  logFix(code, inc);
 
   // Kilometer splits — interpolate the exact crossing time between fixes.
   // A long GPS gap can cross several km marks in one step, so record every one that was crossed.
