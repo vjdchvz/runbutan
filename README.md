@@ -1,74 +1,217 @@
+<div align="center">
+
+<img src="assets/logo-mark.png" alt="RUNbutan mascot" height="96" />
+
 # RUNbutan
 
-A free, offline-first Android running app with a voice coach. Built with Expo / React Native.
+**A free, offline-first running app with a voice coach.**
+Track every run with GPS, hear your pace in your ear, follow adaptive training plans, and keep
+your history yours.
 
-## Features
-- **Live run tracking**: GPS via a foreground service (keeps going with the screen off), pace, average pace, km splits, elevation, pause/resume, GPS signal bars.
-- **Voice**: call-outs every 30 s (pace, average, distance) and at every km; mute switch.
-- **Maps**: your route on a metre grid with no signal; OpenStreetMap tiles drawn underneath when online (cached).
-- **History and stats**: activity cards with route thumbnails, weekly goal, 12-week chart, streak, month calendar and recap, best efforts (400 m to marathon) with record badges, GPX share (e.g. to Strava).
-- **Coach tab**: pick a training plan for any distance from Couch to 5K up through Marathon to Ultra — Couch to 5K, 5K to 10K, 10K to Half Marathon, Half to Marathon, Marathon to Ultra, and 5K Speed; quick workouts (intervals, tempo, fartlek, pyramid, goal runs) led by voice; pace zones and race predictions (5K to 50K) from your best effort (VDOT); guided warm-up, stretch and strength routines; cadence beat; heart-rate zones.
-- **Adaptive coaching** (Settings, on by default): each plan's next session eases or pushes a little — up to ±15% volume — based on how your last few sessions actually went (finished in full? on pace? or a struggle?), not just a fixed script. Only the next undone session ever changes; every other week stays exactly as authored until it's actually reached. See `src/coach/adapt.ts`.
-- **Settings**: km or miles, how often the voice speaks, which numbers it reads, voice and speed, lower-the-music while speaking.
-- **Lock-screen controls**: the run notification shows time, distance and pace with Pause and Stop (Stop needs two presses within 6 s).
-- **Pace accuracy**: current pace and distance use the phone's own GPS (Doppler) speed, falling back to jitter-filtered positions on phones that do not report it.
-- **Strava upload**: "Upload to Strava" saves a smoothed GPX to Downloads and opens strava.com/upload/select (a website cannot be handed a file, so you pick it with Choose Files). Smoothing removes GPS jitter so Strava's distance matches the app's.
-- **Google sign-in + backup** (Settings → Account): signs in with your Google account (Firebase Auth) and backs up your run history to Firestore, so it survives a reinstall or shows up again if you sign in on another device. Entirely optional — everything above works fully offline and signed out, exactly as before; see "Cloud sync setup" below.
-- **Moving time** follows Strava's rule: faster than about 0.89 m/s counts as moving, and slower stretches only count as rest after 15 s.
-- **Safety**: run history stored one key per run, unfinished-run recovery, explains runs that could not be saved.
+[![Android build](https://github.com/vjdchvz/runbutan/actions/workflows/build-apk.yml/badge.svg)](https://github.com/vjdchvz/runbutan/actions/workflows/build-apk.yml)
+![Platforms](https://img.shields.io/badge/platforms-Android%20%C2%B7%20iOS-3DDC84)
+![Expo SDK 57](https://img.shields.io/badge/Expo%20SDK-57-000020?logo=expo)
+![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![License: all rights reserved](https://img.shields.io/badge/license-all%20rights%20reserved-lightgrey)
 
-## Run it
+[**Download**](#download) &nbsp;·&nbsp; [**Watch the 5-minute tour**](docs/media/runbutan-tour.mp4) &nbsp;·&nbsp; [**How it works**](#how-it-measures-a-run)
+
+<br />
+
+<img src="docs/screenshots/hero.jpg" alt="RUNbutan: live run, voice-coached workout, run details with map and records, story card, weekly progress" width="100%" />
+
+<br />
+
+<a href="docs/media/runbutan-tour.mp4"><img src="docs/media/demo.gif" alt="RUNbutan in action: live pace, voice call-outs and kilometre splits" width="300" /></a>
+
+<sub>Click the animation to watch the full narrated tour.</sub>
+
+</div>
+
+<br />
+
+## Why RUNbutan
+
+Most running apps either lock the voice coach behind a subscription or need a connection to be
+useful. RUNbutan does the opposite: everything runs on the phone, with no ads, no analytics and no
+account required. Sign in with Google only if you want your history backed up.
+
+## Highlights
+
+**Run**
+- GPS tracking in a foreground service that keeps going with the screen off
+- Live pace, average, distance, time, elevation and calories (from your body weight)
+- Kilometre or mile splits, pause and resume, unfinished-run recovery
+- Lock-screen controls: Pause and Stop (Stop needs two presses, so a pocket tap can't end a run)
+- Route map that works with no signal, with OpenStreetMap tiles drawn underneath when online
+
+**Voice coach**
+- Call-outs every 15 s to 5 min: pace, average, distance, time and every split, your choice of which
+- Lowers your music while it speaks and brings it back afterwards
+- Guided workouts that count you in, announce each part and tell you your pace against the target
+
+**Training**
+- Plans from Couch to 5K through Marathon to Ultra, plus 5K Speed
+- Adaptive coaching: the next session eases or pushes (up to 15 %) based on how recent ones went
+- Quick workouts (intervals, tempo, fartlek, pyramid), warm-up, stretch and strength routines
+- Pace zones and race predictions from your best effort, heart-rate zones, a cadence beat
+
+**History and records**
+- Every run with its map, splits and best efforts (400 m up to the marathon) with record badges
+- Weekly goal, 12-week chart, streaks, month calendar and recap
+- Shareable 9:16 story image of any run
+
+**Strava**
+- One-tap upload: saves a cleaned GPX and opens Strava's upload page
+- Moving time and pace follow Strava's own rule, so the numbers line up
+- Import your whole Strava history from the archive zip Strava emails you
+
+## Download
+
+| Platform | Get it | Notes |
+|---|---|---|
+| **Android** | [**runbutan-latest.apk**](https://github.com/vjdchvz/runbutan-releases/releases/download/android-latest/runbutan-latest.apk) | Open the file and allow "install unknown apps" when asked. Updates install over the previous version and keep your runs. |
+| **iPhone** | [Downloads page](https://github.com/vjdchvz/runbutan-releases/releases/tag/ios-latest) | An unsigned build: sign it with your own Apple ID using [Sideloadly](https://sideloadly.io). Free Apple IDs need re-signing every 7 days. |
+
+All builds are produced by GitHub Actions from this repository and published to
+[`runbutan-releases`](https://github.com/vjdchvz/runbutan-releases).
+
+## How it measures a run
+
+Accuracy on a phone is mostly a matter of trusting the right signal.
+
+- **Distance and pace** come from the phone's own GPS speed (the satellites' Doppler shift), which is
+  far steadier than differences between jittery positions. Where a phone reports no speed, the
+  app falls back to jitter-filtered positions.
+- **Moving time** uses the same rule Strava describes: faster than about 0.9 m/s counts as
+  moving, and a slower stretch only counts as rest after 15 s, so a quick stop at a crossing
+  doesn't stop the clock.
+- **Strava upload** smooths GPS jitter out of the exported route, because Strava adds up every hop
+  between points and raw jitter makes the distance too long.
+- **Every run keeps a GPS log**: each fix the phone delivered, and what the app did with it. Run
+  details → *GPS log* saves it as a CSV.
+
+```mermaid
+flowchart LR
+  A[GPS fixes<br/>foreground service] --> B[session.ts<br/>distance · pace · splits]
+  B --> C[Voice coach<br/>call-outs · workouts]
+  B --> D[History<br/>route · efforts · records]
+  D --> E[(Local storage)]
+  E -. optional .-> F[(Firestore<br/>per-user backup)]
+  D --> G[GPX / Strava<br/>story image]
+```
+
+## Privacy
+
+- Your runs live on your phone. Nothing leaves it unless you sign in with Google, and then only
+  to your own account's Firestore documents (rules in [`firestore.rules`](firestore.rules)).
+- No ads, no analytics, no tracking SDKs.
+- The only other network calls are OpenStreetMap map tiles and, when you choose it, opening
+  Strava's upload page in your browser.
+
+## Built with
+
+Expo SDK 57 · React Native 0.86 · TypeScript (strict) · a local Kotlin native module for audio
+ducking, the run notification and the cadence beat · Firebase Auth and Firestore (optional) ·
+GitHub Actions for builds · [Remotion](https://remotion.dev) for the demo videos.
+
+## Build from source
+
 Background GPS does not work in Expo Go, so use a dev build.
 
 ```bash
 npm install
+
+# Android (JDK 17+; Android Studio's bundled JDK works)
 npx expo prebuild --platform android
 cd android
-# Gradle needs JDK 17+ (Android Studio's bundled JDK works)
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 ANDROID_HOME=~/Library/Android/sdk \
 ./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a
 adb install -r app/build/outputs/apk/release/app-release.apk
+
+# iOS (Xcode 26.4 or newer)
+npx expo prebuild --platform ios && open ios/*.xcworkspace
 ```
 
-On first start choose location **Allow all the time** and **Precise**.
+On first start allow location **all the time** and **precise** (Android).
 
-## Notes
-- `android/` is generated by `expo prebuild` and is git-ignored. The debug signing key lives in `android/app/debug.keystore`: back it up, because a new key cannot update an app installed with the old one.
-- `src/seed.ts` has `SEED_DEMO`. Keep it `false`; `true` loads fake demo runs for screenshots.
-- Map tiles come from OpenStreetMap (© OpenStreetMap contributors) under its tile usage policy.
+Checks and tools:
 
-## Cloud sync setup
-Google sign-in + Firestore backup (Settings → Account) needs two things set up once, outside the
-repo, in the Firebase project behind the config in `.env`. Both are done for the current
-`keystores/debug.keystore` — this section is reference for if that keystore ever changes (a new
-keystore needs its own Android OAuth client, step 2, registered against its own SHA-1):
+```bash
+npx tsc --noEmit                                  # typecheck
+npx tsx tools/replay.ts --synthetic               # replay a simulated city run through the real logic
+npx tsx tools/replay.ts run-gps-log.csv           # replay a GPS log saved from the app
+npx tsx tools/replay.ts --synthetic --old=<ref>   # compare against the logic at an older commit
+```
 
-1. **Firestore Security Rules** — paste `firestore.rules` into Firebase Console → Firestore
+## Project structure
+
+| Path | What's in it |
+|---|---|
+| `App.tsx`, `src/*Screen.tsx` | App shell and screens (Run, History, Coach, You, Settings) |
+| `src/session.ts` | Live run state: GPS fixes, pace, distance, splits, pause, coaching hook |
+| `src/movingStats.ts`, `src/gpxClean.ts` | Strava-style moving time and splits; GPS smoothing for export |
+| `src/coach/` | Workouts, plans, voice-coaching engine, VDOT pace model, adaptive coaching |
+| `src/history.ts`, `src/inprogress.ts`, `src/fixlog.ts` | Storage, crash recovery, GPS log |
+| `src/stravaExport.ts`, `src/importStrava.ts` | Strava archive import |
+| `src/auth.ts`, `src/firebase.ts`, `src/sync.ts` | Optional Google sign-in and Firestore backup |
+| `modules/runkit/` | Local Expo native module (Kotlin) |
+| `tools/replay.ts` | Replays GPS logs through the real logic on a computer |
+| `promo/` | Remotion project that renders an animated feature tour |
+| `.github/workflows/` | Android build on every push to `main`; iOS build on demand |
+
+## Releases and CI
+
+Every push to `main` builds a release APK and updates the `latest` release. The iOS build is
+started by hand (Actions → *Build iOS*) because macOS runner minutes are billed at ten times the
+Linux rate. Builds are published to the public
+[`runbutan-releases`](https://github.com/vjdchvz/runbutan-releases) repository (the workflows do this
+when a `RELEASES_TOKEN` secret with write access to it is set).
+
+<details>
+<summary><strong>Cloud sync setup (maintainer notes)</strong></summary>
+
+<br />
+
+Google sign-in and Firestore backup (Settings → Account) need setup once, outside the repo, in
+the Firebase project behind the config in `.env`. That config is not a secret: Firebase's web
+config is public by design and access is controlled by Firestore Security Rules.
+
+1. **Firestore Security Rules**: paste `firestore.rules` into Firebase Console → Firestore
    Database → Rules → Publish. Without this, Firestore's default rules either deny everything
-   (sign-in works, sync silently fails) or, worse, allow anyone to read/write anyone's runs.
-2. **An Android OAuth client** — Google Cloud Console → APIs & Services → Credentials → Create
-   Credentials → OAuth client ID → Application type: **Android**, tied to package name
-   `com.runbutan.app` and the SHA-1 of whichever keystore signs your build (`keystores/debug.keystore`
-   for CI builds — print its SHA-1 with `keytool -list -v -keystore keystores/debug.keystore
-   -storepass android -alias androiddebugkey`). The app itself never references this client ID
-   (Google Play Services matches the signed-in app to it by package name + SHA-1 automatically) —
-   it just has to exist, registered against the right fingerprint, or Play Services refuses to
-   issue a token. `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in `.env` is the one the app actually reads
-   (`src/auth.ts`, `GoogleSignin.configure`) — it's the ID-token audience, shared with Firebase.
-   Until it's set, Settings shows "Google Sign-In isn't set up yet" instead of a broken button.
+   (sign-in works, sync silently fails) or allow anyone to read and write anyone's runs.
+2. **An Android OAuth client**: Google Cloud Console → APIs & Services → Credentials → OAuth
+   client ID → *Android*, for package `com.runbutan.app` and the SHA-1 of the keystore that signs
+   the build (`keytool -list -v -keystore keystores/debug.keystore -storepass android -alias
+   androiddebugkey`). A different keystore needs its own client registered against its SHA-1.
+3. **An iOS OAuth client** for bundle id `com.runbutan.app`; set its id in
+   `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` and its reversed form as the URL scheme in `app.json`.
 
-   Sign-in uses `@react-native-google-signin/google-signin` (the native Play Services picker), not
-   a browser redirect — Google blocks the browser-redirect flow's custom URI scheme for apps that
-   haven't verified ownership through Play Console, which isn't realistic for a sideloaded APK.
+`EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in `.env` is the ID the app reads (`src/auth.ts`). Until it is
+set, Settings shows "Google Sign-In isn't set up yet" instead of a broken button.
 
-## Layout
-- `modules/runkit/` local Expo native module (Kotlin): audio ducking and the run notification with Pause / Stop
-- `src/session.ts` live run state (GPS fixes, pace, splits, pause, coaching hook)
-- `src/coach/` workouts, plans, voice-coaching engine, VDOT pace model, routines
-- `src/history.ts`, `src/inprogress.ts` storage and crash recovery
-- `src/movingStats.ts`, `src/migrate.ts` moving-time/pace recomputed from the cleaned route at save time (matches Strava), plus the one-time migration for older runs
-- `src/firebase.ts`, `src/auth.ts`, `src/sync.ts` Google sign-in and Firestore backup
-- `src/settings.ts`, `src/units.ts` user settings and km/mi formatting
-- `src/*Screen.tsx` screens
-- `promo/` a separate Remotion project (own `package.json`) rendering a feature-tour demo video — see `promo/README.md`
+Sign-in uses the native Play Services picker, not a browser redirect: Google blocks the
+redirect flow's custom URI scheme for apps that haven't verified ownership through Play Console.
+
+</details>
+
+## Status and known limitations
+
+RUNbutan is an actively developed personal project, not a store release.
+
+- **Android is the primary platform.** The iPhone build works but is unsigned, has no lock-screen
+  controls, and its cadence beat only runs while the app is on screen (iOS allows nothing else).
+- **Distance can differ from Strava by a few percent** on long city runs with weak GPS. Each run
+  keeps a GPS log so this can be tuned against real data.
+- **Elevation gain** comes from GPS altitude, which is noisy; expect it to read high on flat runs.
+- **Strava import** reads GPX and TCX files; runs stored only as `.fit` come in without a map.
+- **Not on Google Play or the App Store.**
+
+## License
+
+Source available, **all rights reserved**: the code is public to read and the app is free to
+install, but it is not open source and may not be copied or redistributed. See [LICENSE](LICENSE).
+
+Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. "Strava" is a
+trademark of Strava, Inc.; RUNbutan is not affiliated with it.

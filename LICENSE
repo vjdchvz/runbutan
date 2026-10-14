@@ -1,21 +1,35 @@
-The MIT License (MIT)
+RUNbutan - Source Available, All Rights Reserved
 
-Copyright (c) 2015-present 650 Industries, Inc. (aka Expo)
+Copyright (c) 2026 vjdchvz. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This repository is public so that people can read the code and download the app.
+It is NOT open source. Except for the permissions listed below, no licence is
+granted to use, copy, modify, merge, publish, distribute, sublicense or sell this
+source code or any part of it, or to build and distribute apps derived from it.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+What you may do:
+
+  1. Read the source code, and run it locally for your own personal evaluation.
+  2. Install and use the RUNbutan app from its official downloads page,
+     https://github.com/vjdchvz/runbutan-releases, for your own personal use.
+  3. View and fork this repository on GitHub, as GitHub's Terms of Service
+     permit for any public repository (reproduction is limited to GitHub and
+     its functionality).
+
+What you may not do without written permission from the copyright holder:
+
+  - copy any part of this code into another project or product;
+  - publish, repackage or redistribute the app or a modified version of it;
+  - use the name, logo or mascot "RUNbutan" for another project;
+  - sell the app or code, or use either commercially.
+
+Third-party components used by this project (Expo, React Native and the other
+packages listed in package.json) remain under their own licences. Map data is
+(c) OpenStreetMap contributors, available under the Open Database Licence.
+"Strava" is a trademark of Strava, Inc.; RUNbutan is not affiliated with it.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHOR BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THE
 SOFTWARE.
